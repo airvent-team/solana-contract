@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::{constants::MAX_DEVICE_ID_LEN, errors::ErrorCode, state::DeviceRegistry};
+use crate::{constants::MAX_DEVICE_ID_LEN, errors::ErrorCode, state::{DeviceRegistry, DeviceRewards}};
 
 /// Register a new IoT device with an owner
 /// device_id: Unique identifier for the device (e.g., serial number)
@@ -15,6 +15,14 @@ pub fn register_device(ctx: Context<RegisterDevice>, device_id: String) -> Resul
     device.owner = ctx.accounts.owner.key();
     device.registered_at = Clock::get()?.unix_timestamp;
     device.is_active = true;
+
+    // Initialize device rewards account
+    let device_rewards = &mut ctx.accounts.device_rewards;
+    device_rewards.device_id = device_id.clone();
+    device_rewards.owner = ctx.accounts.owner.key();
+    device_rewards.accumulated_points = 0;
+    device_rewards.total_data_submitted = 0;
+    device_rewards.last_submission = 0;
 
     msg!("Device registered: {} -> {}", device_id, ctx.accounts.owner.key());
     Ok(())
@@ -61,6 +69,16 @@ pub struct RegisterDevice<'info> {
         bump
     )]
     pub device: Account<'info, DeviceRegistry>,
+
+    /// Device rewards account - created together with device
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + DeviceRewards::INIT_SPACE,
+        seeds = [b"device_rewards", device_id.as_bytes()],
+        bump
+    )]
+    pub device_rewards: Account<'info, DeviceRewards>,
 
     /// Owner of the device
     #[account(mut)]

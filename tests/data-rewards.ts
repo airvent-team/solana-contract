@@ -257,6 +257,45 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("   ✅ Halving interval: 4 years (time-based, like Bitcoin)");
   });
 
+  it("Fails when unregistered device tries to submit data", async () => {
+    const unregisteredDeviceId = "AIRVENT-UNREGISTERED-999";
+
+    // Try to derive the device rewards PDA for unregistered device
+    const [unregisteredDeviceAddress] = PublicKey.findProgramAddressSync(
+      [Buffer.from("device"), Buffer.from(unregisteredDeviceId)],
+      program.programId
+    );
+
+    const [unregisteredRewardsAddress] = PublicKey.findProgramAddressSync(
+      [Buffer.from("device_rewards"), Buffer.from(unregisteredDeviceId)],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .submitData(unregisteredDeviceId, 50, 70)
+        .accounts({
+          device: unregisteredDeviceAddress,
+          deviceRewards: unregisteredRewardsAddress,
+          rewardConfig: rewardConfigAddress,
+          server: server.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+
+      // If we get here, the test should fail
+      assert.fail("Should have failed with AccountNotInitialized error");
+    } catch (err: any) {
+      // Verify it failed because device account doesn't exist
+      assert.include(
+        err.toString(),
+        "AccountNotInitialized",
+        "Should fail with AccountNotInitialized error"
+      );
+      console.log("✅ Correctly prevented data submission from unregistered device");
+    }
+  });
+
   // Add claim tests
   it("Owner claims rewards from Device 2", async () => {
     const { getAssociatedTokenAddress, createAssociatedTokenAccount, TOKEN_PROGRAM_ID } =
