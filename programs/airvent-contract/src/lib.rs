@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, MintTo, Transfer},
+    token::{self, Mint, Token, TokenAccount, MintTo},
 };
 
 declare_id!("DaWa9EjUZc92NuAGeDd4sKZGFttGptREoAWGwxRtxoXi");
@@ -50,24 +50,6 @@ pub mod airvent_contract {
 
         msg!("AIR Token initialized: {} total supply minted to treasury", TOTAL_SUPPLY);
         msg!("Mint authority removed - no more tokens can be minted");
-        Ok(())
-    }
-
-    /// Transfer AIR tokens from treasury or user accounts
-    /// Used for reward distribution when users claim
-    pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.from.to_account_info(),
-                    to: ctx.accounts.to.to_account_info(),
-                    authority: ctx.accounts.authority.to_account_info(),
-                },
-            ),
-            amount,
-        )?;
-        msg!("Transferred {} AIR tokens", amount);
         Ok(())
     }
 
@@ -193,6 +175,40 @@ pub mod airvent_contract {
     pub fn get_device_rewards(ctx: Context<GetDeviceRewards>) -> Result<u64> {
         Ok(ctx.accounts.device_rewards.accumulated_points)
     }
+
+    /// Claim accumulated rewards and receive AIR tokens
+    /// Only device owner can claim
+    pub fn claim_rewards(ctx: Context<ClaimRewards>, device_id: String) -> Result<()> {
+        let device_rewards = &mut ctx.accounts.device_rewards;
+        let amount_to_claim = device_rewards.accumulated_points;
+
+        // Check if there are rewards to claim
+        require!(amount_to_claim > 0, ErrorCode::NoRewardsToClaim);
+
+        // Transfer tokens from treasury to owner
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.treasury.to_account_info(),
+                    to: ctx.accounts.owner_token_account.to_account_info(),
+                    authority: ctx.accounts.treasury_authority.to_account_info(),
+                },
+            ),
+            amount_to_claim,
+        )?;
+
+        // Reset accumulated points
+        device_rewards.accumulated_points = 0;
+
+        msg!(
+            "Claimed {} AIR tokens for device: {}",
+            amount_to_claim,
+            device_id
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -229,22 +245,6 @@ pub struct InitializeToken<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
-}
-
-#[derive(Accounts)]
-pub struct TransferTokens<'info> {
-    /// Source token account (treasury or user wallet)
-    #[account(mut)]
-    pub from: Account<'info, TokenAccount>,
-
-    /// Destination token account (user wallet)
-    #[account(mut)]
-    pub to: Account<'info, TokenAccount>,
-
-    /// Authority of the source account
-    pub authority: Signer<'info>,
-
-    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
@@ -426,6 +426,42 @@ pub struct GetDeviceRewards<'info> {
     pub device: Account<'info, DeviceRegistry>,
 }
 
+#[derive(Accounts)]
+#[instruction(device_id: String)]
+pub struct ClaimRewards<'info> {
+    /// Device that has accumulated rewards
+    #[account(
+        seeds = [b"device", device_id.as_bytes()],
+        bump,
+        has_one = owner @ ErrorCode::Unauthorized
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+
+    /// Device rewards account
+    #[account(
+        mut,
+        seeds = [b"device_rewards", device_id.as_bytes()],
+        bump
+    )]
+    pub device_rewards: Account<'info, DeviceRewards>,
+
+    /// Treasury that holds the tokens
+    #[account(mut)]
+    pub treasury: Account<'info, TokenAccount>,
+
+    /// Owner's token account to receive rewards
+    #[account(mut)]
+    pub owner_token_account: Account<'info, TokenAccount>,
+
+    /// Treasury authority that signs the transfer
+    pub treasury_authority: Signer<'info>,
+
+    /// Device owner (must be signer to claim)
+    pub owner: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Device ID is too long (max 32 characters)")]
@@ -439,4 +475,7 @@ pub enum ErrorCode {
 
     #[msg("Device is not active")]
     DeviceNotActive,
+
+    #[msg("No rewards to claim")]
+    NoRewardsToClaim,
 }
