@@ -9,6 +9,9 @@ declare_id!("DaWa9EjUZc92NuAGeDd4sKZGFttGptREoAWGwxRtxoXi");
 /// Total supply: 1 billion AIR tokens (with 9 decimals)
 pub const TOTAL_SUPPLY: u64 = 1_000_000_000 * 1_000_000_000;
 
+/// Maximum device ID length (32 bytes for hash-like IDs)
+pub const MAX_DEVICE_ID_LEN: usize = 32;
+
 #[program]
 pub mod airvent_contract {
     use super::*;
@@ -64,6 +67,53 @@ pub mod airvent_contract {
         msg!("Transferred {} AIR tokens", amount);
         Ok(())
     }
+
+    /// Register a new IoT device with an owner
+    /// device_id: Unique identifier for the device (e.g., serial number)
+    pub fn register_device(ctx: Context<RegisterDevice>, device_id: String) -> Result<()> {
+        require!(
+            device_id.len() <= MAX_DEVICE_ID_LEN,
+            ErrorCode::DeviceIdTooLong
+        );
+        require!(!device_id.is_empty(), ErrorCode::DeviceIdEmpty);
+
+        let device = &mut ctx.accounts.device;
+        device.device_id = device_id.clone();
+        device.owner = ctx.accounts.owner.key();
+        device.registered_at = Clock::get()?.unix_timestamp;
+        device.is_active = true;
+
+        msg!("Device registered: {} -> {}", device_id, ctx.accounts.owner.key());
+        Ok(())
+    }
+
+    /// Transfer device ownership to a new owner
+    /// Only the current owner can transfer ownership
+    pub fn transfer_ownership(
+        ctx: Context<TransferOwnership>,
+        new_owner: Pubkey,
+    ) -> Result<()> {
+        let device = &mut ctx.accounts.device;
+
+        msg!(
+            "Device {} ownership transferred: {} -> {}",
+            device.device_id,
+            device.owner,
+            new_owner
+        );
+
+        device.owner = new_owner;
+        Ok(())
+    }
+
+    /// Deactivate a device (only owner can deactivate)
+    pub fn deactivate_device(ctx: Context<DeactivateDevice>) -> Result<()> {
+        let device = &mut ctx.accounts.device;
+        device.is_active = false;
+
+        msg!("Device {} deactivated", device.device_id);
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -116,4 +166,82 @@ pub struct TransferTokens<'info> {
     pub authority: Signer<'info>,
 
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(device_id: String)]
+pub struct RegisterDevice<'info> {
+    /// Device account to be created
+    /// PDA seeded with device_id
+    #[account(
+        init,
+        payer = owner,
+        space = 8 + DeviceRegistry::INIT_SPACE,
+        seeds = [b"device", device_id.as_bytes()],
+        bump
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+
+    /// Owner of the device
+    #[account(mut)]
+    pub owner: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct TransferOwnership<'info> {
+    /// Device account
+    #[account(
+        mut,
+        has_one = owner @ ErrorCode::Unauthorized
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+
+    /// Current owner (must sign)
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DeactivateDevice<'info> {
+    /// Device account
+    #[account(
+        mut,
+        has_one = owner @ ErrorCode::Unauthorized
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+
+    /// Current owner (must sign)
+    pub owner: Signer<'info>,
+}
+
+/// Device Registry Account
+/// Stores information about a registered IoT device
+#[account]
+#[derive(InitSpace)]
+pub struct DeviceRegistry {
+    /// Unique device identifier (e.g., serial number)
+    #[max_len(32)]
+    pub device_id: String,
+
+    /// Owner's wallet address
+    pub owner: Pubkey,
+
+    /// Timestamp when device was registered
+    pub registered_at: i64,
+
+    /// Whether the device is currently active
+    pub is_active: bool,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Device ID is too long (max 32 characters)")]
+    DeviceIdTooLong,
+
+    #[msg("Device ID cannot be empty")]
+    DeviceIdEmpty,
+
+    #[msg("Unauthorized: You are not the owner of this device")]
+    Unauthorized,
 }
