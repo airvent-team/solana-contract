@@ -12,6 +12,9 @@ pub const TOTAL_SUPPLY: u64 = 1_000_000_000 * 1_000_000_000;
 /// Maximum device ID length (32 bytes for hash-like IDs)
 pub const MAX_DEVICE_ID_LEN: usize = 32;
 
+/// Halving interval: 4 years in seconds (like Bitcoin)
+pub const HALVING_INTERVAL_SECONDS: i64 = 4 * 365 * 24 * 60 * 60; // ~126M seconds
+
 #[program]
 pub mod airvent_contract {
     use super::*;
@@ -113,6 +116,82 @@ pub mod airvent_contract {
 
         msg!("Device {} deactivated", device.device_id);
         Ok(())
+    }
+
+    /// Initialize reward configuration (one-time setup)
+    pub fn initialize_reward_config(
+        ctx: Context<InitializeRewardConfig>,
+        initial_reward: u64,
+    ) -> Result<()> {
+        let config = &mut ctx.accounts.reward_config;
+        config.authority = ctx.accounts.authority.key();
+        config.initial_reward = initial_reward;
+        config.start_timestamp = Clock::get()?.unix_timestamp;
+        config.total_data_submitted = 0;
+        config.total_rewards_distributed = 0;
+
+        msg!(
+            "Reward config initialized: {} AIR per data, halving every 4 years",
+            initial_reward
+        );
+        Ok(())
+    }
+
+    /// Submit IoT data and accumulate rewards
+    /// Server calls this when device sends data
+    pub fn submit_data(
+        ctx: Context<SubmitData>,
+        device_id: String,
+        pm25: u16,
+        pm10: u16,
+    ) -> Result<()> {
+        let device = &ctx.accounts.device;
+        let config = &mut ctx.accounts.reward_config;
+        let device_rewards = &mut ctx.accounts.device_rewards;
+        let current_time = Clock::get()?.unix_timestamp;
+
+        // Verify device is active
+        require!(device.is_active, ErrorCode::DeviceNotActive);
+
+        // Initialize device rewards if this is first submission
+        if device_rewards.device_id.is_empty() {
+            device_rewards.device_id = device_id.clone();
+            device_rewards.owner = device.owner;
+            device_rewards.accumulated_points = 0;
+            device_rewards.total_data_submitted = 0;
+            device_rewards.last_submission = 0;
+        }
+
+        // Calculate current reward based on time-based halving (4 years)
+        let time_elapsed = current_time - config.start_timestamp;
+        let halving_count = time_elapsed / HALVING_INTERVAL_SECONDS;
+        let current_reward = config.initial_reward / (2_u64.pow(halving_count as u32));
+
+        // Accumulate rewards for device
+        device_rewards.accumulated_points += current_reward;
+        device_rewards.total_data_submitted += 1;
+        device_rewards.last_submission = current_time;
+        device_rewards.owner = device.owner; // Update owner in case of transfer
+
+        // Update global stats
+        config.total_data_submitted += 1;
+        config.total_rewards_distributed += current_reward;
+
+        msg!(
+            "Data submitted - Device: {}, PM2.5: {}, PM10: {}, Reward: {} AIR (halving epoch: {})",
+            device_id,
+            pm25,
+            pm10,
+            current_reward,
+            halving_count
+        );
+
+        Ok(())
+    }
+
+    /// Check accumulated rewards for a device
+    pub fn get_device_rewards(ctx: Context<GetDeviceRewards>) -> Result<u64> {
+        Ok(ctx.accounts.device_rewards.accumulated_points)
     }
 }
 
@@ -234,6 +313,119 @@ pub struct DeviceRegistry {
     pub is_active: bool,
 }
 
+/// Global reward configuration with halving mechanism
+#[account]
+#[derive(InitSpace)]
+pub struct RewardConfig {
+    /// Authority that can modify config
+    pub authority: Pubkey,
+
+    /// Initial reward per data submission (in smallest units)
+    pub initial_reward: u64,
+
+    /// Timestamp when reward system started (for time-based halving)
+    pub start_timestamp: i64,
+
+    /// Total data submissions across all devices (statistics)
+    pub total_data_submitted: u64,
+
+    /// Total rewards distributed (in points, not claimed tokens)
+    pub total_rewards_distributed: u64,
+}
+
+/// Device's accumulated rewards
+/// Rewards are tied to device, not user
+/// When device ownership changes, rewards go with the device
+#[account]
+#[derive(InitSpace)]
+pub struct DeviceRewards {
+    /// Device ID this reward account belongs to
+    #[max_len(32)]
+    pub device_id: String,
+
+    /// Current owner of the device (updated on ownership transfer)
+    pub owner: Pubkey,
+
+    /// Accumulated reward points (not yet claimed)
+    pub accumulated_points: u64,
+
+    /// Total data submissions by this device
+    pub total_data_submitted: u64,
+
+    /// Last submission timestamp
+    pub last_submission: i64,
+}
+
+#[derive(Accounts)]
+pub struct InitializeRewardConfig<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + RewardConfig::INIT_SPACE,
+        seeds = [b"reward_config"],
+        bump
+    )]
+    pub reward_config: Account<'info, RewardConfig>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(device_id: String)]
+pub struct SubmitData<'info> {
+    /// Device that is submitting data
+    #[account(
+        seeds = [b"device", device_id.as_bytes()],
+        bump
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+
+    /// Device rewards account - rewards tied to device, not user
+    #[account(
+        init_if_needed,
+        payer = server,
+        space = 8 + DeviceRewards::INIT_SPACE,
+        seeds = [b"device_rewards", device_id.as_bytes()],
+        bump
+    )]
+    pub device_rewards: Account<'info, DeviceRewards>,
+
+    /// Global reward config
+    #[account(
+        mut,
+        seeds = [b"reward_config"],
+        bump
+    )]
+    pub reward_config: Account<'info, RewardConfig>,
+
+    /// Server that submits data (pays for account creation)
+    #[account(mut)]
+    pub server: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(device_id: String)]
+pub struct GetDeviceRewards<'info> {
+    /// Device rewards account
+    #[account(
+        seeds = [b"device_rewards", device_id.as_bytes()],
+        bump
+    )]
+    pub device_rewards: Account<'info, DeviceRewards>,
+
+    /// Device registry to verify ownership
+    #[account(
+        seeds = [b"device", device_id.as_bytes()],
+        bump
+    )]
+    pub device: Account<'info, DeviceRegistry>,
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Device ID is too long (max 32 characters)")]
@@ -244,4 +436,7 @@ pub enum ErrorCode {
 
     #[msg("Unauthorized: You are not the owner of this device")]
     Unauthorized,
+
+    #[msg("Device is not active")]
+    DeviceNotActive,
 }
