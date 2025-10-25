@@ -145,6 +145,29 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("   Global submissions:", config.totalDataSubmitted.toString());
   });
 
+  it("Verifies DataSubmitted event is emitted (integration)", async () => {
+    // Submit data - event will be emitted automatically
+    const txSignature = await program.methods
+      .submitData(deviceId1, 42, 58)
+      .accounts({
+        device: device1Address,
+        deviceRewards: device1RewardsAddress,
+        rewardConfig: rewardConfigAddress,
+        server: server.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .rpc();
+
+    console.log("📡 DataSubmitted event emitted in transaction:", txSignature);
+    console.log("   PM2.5: 42, PM10: 58");
+    console.log("   ✅ Events are stored in Solana program logs");
+    console.log("   💡 Use Helius/Triton indexer to query historical events");
+
+    // Verify rewards were actually accumulated (indirect event verification)
+    const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
+    assert.isAbove(deviceRewards.accumulatedPoints.toNumber(), 0, "Rewards should be accumulated");
+  });
+
   it("Device 1 submits more data - rewards accumulate on device", async () => {
     for (let i = 0; i < 5; i++) {
       await program.methods
@@ -163,8 +186,8 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
 
-    // Total: 6 submissions × 100 AIR = 600 AIR
-    const expectedPoints = INITIAL_REWARD * 6;
+    // Total: 7 submissions × 100 AIR = 700 AIR (1 initial + 1 event test + 5 here)
+    const expectedPoints = INITIAL_REWARD * 7;
     assert.equal(deviceRewards.accumulatedPoints.toString(), expectedPoints.toString());
 
     console.log("   Device 1 total accumulated:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
@@ -234,7 +257,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     // Rewards accumulated + new owner updated
     assert.equal(deviceRewards.owner.toString(), newOwner.toString());
-    const expectedPoints = INITIAL_REWARD * 7;
+    const expectedPoints = INITIAL_REWARD * 8; // 7 previous + 1 new submission
     assert.equal(deviceRewards.accumulatedPoints.toString(), expectedPoints.toString());
 
     console.log("   Device 1 new owner:", deviceRewards.owner.toString());

@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::HALVING_INTERVAL_SECONDS,
     errors::ErrorCode,
-    state::{DeviceRegistry, DeviceRewards, RewardConfig},
+    state::{DeviceRegistry, DeviceRewards, RewardConfig, DataSubmitted},
 };
 
 /// Submit IoT data and accumulate rewards
@@ -44,6 +44,17 @@ pub fn submit_data(
         current_reward,
         halving_count
     );
+
+    // Emit event for permanent on-chain storage
+    emit!(DataSubmitted {
+        device_id: device_id.clone(),
+        timestamp: current_time,
+        pm25,
+        pm10,
+        reward_amount: current_reward,
+        halving_epoch: halving_count as u64,
+        owner: device.owner,
+    });
 
     Ok(())
 }
