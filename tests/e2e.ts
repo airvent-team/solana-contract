@@ -78,16 +78,24 @@ describe("E2E: IoT Reward System", () => {
       program.programId
     );
 
-    await program.methods
-      .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
-      .accounts({
-        rewardConfig: rewardConfigAddress,
-        authority: provider.wallet.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      })
-      .rpc();
+    // Check if reward config already exists (from other test suites)
+    const accountInfo = await provider.connection.getAccountInfo(rewardConfigAddress);
 
-    console.log("✅ Reward config initialized");
+    if (!accountInfo) {
+      // Only initialize if it doesn't exist
+      await program.methods
+        .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
+        .accounts({
+          rewardConfig: rewardConfigAddress,
+          authority: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+      console.log("✅ Reward config initialized");
+    } else {
+      console.log("✅ Reward config already exists (reusing from previous test)");
+    }
+
     console.log("   Initial reward:", INITIAL_REWARD / 10 ** 9, "AIR per data");
   });
 
@@ -243,24 +251,26 @@ describe("E2E: IoT Reward System", () => {
   });
 
   it("9. Verifies complete flow statistics", async () => {
-    const config = await program.account.rewardConfig.fetch(rewardConfigAddress);
     const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
     const ownerBalance = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
     const treasuryBalance = await provider.connection.getTokenAccountBalance(treasuryTokenAccount);
 
-    console.log("\n📊 Final Statistics:");
-    console.log("   Total data submitted:", config.totalDataSubmitted.toString());
-    console.log("   Total rewards distributed:", config.totalRewardsDistributed.toNumber() / 10 ** 9, "AIR");
+    console.log("\n📊 E2E Test Results:");
+    console.log("   Device total submissions:", deviceRewards.totalDataSubmitted.toString());
     console.log("   Device pending rewards:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
     console.log("   Owner claimed balance:", ownerBalance.value.uiAmount, "AIR");
     console.log("   Treasury remaining:", treasuryBalance.value.uiAmount?.toLocaleString(), "AIR");
 
-    // Total should match: submitted 8 times × 100 AIR = 800 AIR
-    assert.equal(config.totalDataSubmitted.toString(), "8");
-    assert.equal(config.totalRewardsDistributed.toString(), (800 * 10 ** 9).toString());
-    assert.equal(ownerBalance.value.amount, (800 * 10 ** 9).toString());
+    // Verify this device submitted 8 times (5 + 3) and owner received 800 AIR
+    assert.equal(deviceRewards.totalDataSubmitted.toString(), "8", "Device should have 8 submissions");
+    assert.equal(deviceRewards.accumulatedPoints.toString(), "0", "Device should have 0 pending rewards after claims");
+    assert.equal(ownerBalance.value.amount, (800 * 10 ** 9).toString(), "Owner should have received 800 AIR");
 
-    console.log("\n✅ Complete IoT-to-Earn flow verified!");
+    // Verify treasury decreased by 800 AIR
+    const expectedTreasuryBalance = TOTAL_SUPPLY - (800 * 10 ** 9);
+    assert.equal(treasuryBalance.value.amount, expectedTreasuryBalance.toString(), "Treasury should have distributed 800 AIR");
+
+    console.log("\n✅ Complete E2E flow verified!");
     console.log("   1. Token created with 1B supply");
     console.log("   2. Device registered to owner");
     console.log("   3. Data submitted → Rewards accumulated");

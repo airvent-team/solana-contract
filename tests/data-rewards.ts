@@ -51,16 +51,22 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
       program.programId
     );
 
-    const tx = await program.methods
-      .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
-      .accounts({
-        rewardConfig: rewardConfigAddress,
-        authority: provider.wallet.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      })
-      .rpc();
+    // Check if reward config already exists (for idempotency)
+    const accountInfo = await provider.connection.getAccountInfo(rewardConfigAddress);
 
-    console.log("✅ Reward config initialized:", tx);
+    if (!accountInfo) {
+      const tx = await program.methods
+        .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
+        .accounts({
+          rewardConfig: rewardConfigAddress,
+          authority: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+      console.log("✅ Reward config initialized:", tx);
+    } else {
+      console.log("✅ Reward config already exists (reusing from previous test)");
+    }
 
     const config = await program.account.rewardConfig.fetch(rewardConfigAddress);
     assert.equal(config.initialReward.toString(), INITIAL_REWARD.toString());
