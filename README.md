@@ -44,45 +44,18 @@ programs/airvent-contract/src/
 
 ## 배포 가이드
 
-### 1. 프로그램 배포
+### 빠른 시작 (로컬넷)
 
 ```bash
+anchor localnet # 로컬넷 실행
+
 anchor build
 anchor deploy
+anchor migrate
 ```
 
-### 2. Admin 초기 설정 (1회만)
-
-배포 후 관리자가 수행해야 하는 초기 설정:
-
-#### ① Token 초기화 (`initialize_token`)
-
-- Treasury 지갑 지정
-- 1 billion AIR 토큰 발행 → Treasury로 전송
-- Mint Authority 영구 제거 (추가 발행 불가)
-
-**필요한 계정:**
-- Mint (새로 생성)
-- Treasury Token Account (ATA)
-- Treasury Authority (관리자 지갑)
-
-#### ② Reward Config 초기화 (`initialize_reward_config`)
-
-- 초기 리워드 설정 (예: 100 AIR per data)
-- 시작 시간 기록 (4년 반감기 계산 기준)
-
-**참고:**
-- Reward Config는 PDA (seeds: `["reward_config"]`)
-- 한 번만 생성 가능
-
-### 3. 배포 후 저장할 정보
-
-- Program ID
-- Mint Address
-- Treasury Token Account Address
-- Treasury Authority Public Key
-
-**중요:** Treasury Authority의 Private Key는 안전하게 보관 (claim 시 서명 필요)
+**자세한 배포 가이드:**
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - 네트워크 전환, Anchor 명령어, 전체 배포 프로세스, 트러블슈팅
 
 ## 유저 플로우
 
