@@ -19,7 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 const TOTAL_SUPPLY = 1_000_000_000 * 10 ** 9; // 1 billion AIR
-const INITIAL_REWARD = 100 * 10 ** 9; // 100 AIR per data submission
+const INITIAL_REWARD = 0.1 * 10 ** 9; // 0.1 AIR per submission
 
 module.exports = async function (provider: anchor.AnchorProvider) {
   // Configure client to use the provider.
