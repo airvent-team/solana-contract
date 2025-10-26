@@ -58,6 +58,7 @@ anchor migrate
 
 **자세한 배포 가이드:**
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - 네트워크 전환, Anchor 명령어, 전체 배포 프로세스, 트러블슈팅
+- **[SCRIPTS.md](./SCRIPTS.md)** - 디바이스 등록, 소유권 이전 등 유틸리티 스크립트 사용법
 
 ## 유저 플로우
 
