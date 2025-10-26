@@ -18,22 +18,18 @@ A Solana smart contract that **automatically distributes AIR token rewards** whe
 #### 🔑 Fixed Addresses (Immutable)
 These addresses remain constant for the lifetime of the program:
 
-```
-Program ID:      B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR
-Treasury PDA:    B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u
-RewardConfig:    CFkj9K4gmtAnSBAETivan76gnuhv5oohytCKd7PqPvSy
-```
+- **Program ID**: [`B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR`](https://solscan.io/account/B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR?cluster=devnet)
+- **Treasury PDA**: [`B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u`](https://solscan.io/account/B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u?cluster=devnet)
+- **RewardConfig**: [`CFkj9K4gmtAnSBAETivan76gnuhv5oohytCKd7PqPvSy`](https://solscan.io/account/CFkj9K4gmtAnSBAETivan76gnuhv5oohytCKd7PqPvSy?cluster=devnet)
 
 #### 🪙 Token Information
 
-```
-Mint Address:    BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL
-Total Supply:    1,000,000,000 AIR
-Decimals:        9
-Initial Reward:  0.1 AIR per submission
-Halving Period:  Every 4 years
-Network:         Devnet
-```
+- **Mint Address**: [`BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL`](https://solscan.io/token/BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL?cluster=devnet)
+- **Total Supply**: 1,000,000,000 AIR
+- **Decimals**: 9
+- **Initial Reward**: 0.1 AIR per submission
+- **Halving Period**: Every 4 years
+- **Network**: Devnet
 
 #### 📊 Contract Status
 
@@ -41,12 +37,6 @@ Network:         Devnet
 - ✅ Mint authority permanently revoked (no additional minting possible)
 - ✅ Rewards automatically distributed on data submission
 - ✅ Treasury controlled by program (PDA signer)
-
-#### 🔗 Explorer Links
-
-- [Program on Solscan](https://solscan.io/account/B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR?cluster=devnet)
-- [Token Mint on Solscan](https://solscan.io/token/BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL?cluster=devnet)
-- [Treasury PDA on Solscan](https://solscan.io/account/B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u?cluster=devnet)
 
 ## Architecture
 
