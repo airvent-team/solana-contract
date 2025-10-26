@@ -25,8 +25,12 @@ async function main() {
     "confirmed"
   );
 
-  // Load wallet from ~/.config/solana/id.json
-  const walletPath = `${os.homedir()}/.config/solana/id.json`;
+  // Load wallet from Solana CLI config
+  const configPath = `${os.homedir()}/.config/solana/cli/config.yml`;
+  const configContent = fs.readFileSync(configPath, 'utf-8');
+  const keypairMatch = configContent.match(/keypair_path: (.+)/);
+  const walletPath = keypairMatch ? keypairMatch[1].trim() : `${os.homedir()}/.config/solana/id.json`;
+
   const walletKeypair = anchor.web3.Keypair.fromSecretKey(
     new Uint8Array(JSON.parse(fs.readFileSync(walletPath, "utf-8")))
   );
