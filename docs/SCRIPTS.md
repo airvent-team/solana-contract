@@ -110,7 +110,8 @@ yarn ts-node scripts/transfer-ownership.ts AQ-20251026-8478 F47u5hNqRjJ3A8baEbH6
 
 ### Important Notes
 
-- **Can only be executed with the current owner's wallet (`~/.config/solana/id.json`)**
+- **Can only be executed with the current owner's wallet** (uses Solana CLI configured keypair)
+- Both DeviceRegistry and DeviceRewards owners are updated atomically in a single transaction
 - Rewards after transfer will be automatically sent to the new owner
 - Ownership transfer is irreversible, proceed with caution
 

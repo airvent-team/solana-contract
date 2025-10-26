@@ -75,6 +75,7 @@ anchor migrate
 
 3. **Transfer Ownership** (`transfer_ownership`)
    - Transfer device to another wallet
+   - Both DeviceRegistry and DeviceRewards owners are updated atomically
    - Subsequent rewards automatically transferred to new owner
 
 4. **Deactivate Device** (`deactivate_device`)

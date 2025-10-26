@@ -52,6 +52,8 @@ async function main() {
   );
   const wallet = new anchor.Wallet(walletKeypair);
 
+  console.log(`\n🔍 Debug - Wallet pubkey from keypair: ${walletKeypair.publicKey.toString()}`);
+
   const provider = new anchor.AnchorProvider(connection, wallet, {
     commitment: "confirmed",
   });
@@ -64,6 +66,9 @@ async function main() {
   const program = new Program(idl, provider) as Program<AirventContract>;
   const currentOwner = provider.wallet.publicKey;
 
+  console.log(`🔍 Debug - Current owner from provider: ${currentOwner.toString()}`);
+  console.log(`🔍 Debug - Wallet is signer: ${wallet instanceof anchor.Wallet}\n`);
+
   console.log("\n╔═══════════════════════════════════════════════════════╗");
   console.log("║        Transfer Device Ownership                      ║");
   console.log("╚═══════════════════════════════════════════════════════╝\n");
@@ -74,9 +79,15 @@ async function main() {
     program.programId
   );
 
+  const [deviceRewardsPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("device_rewards"), Buffer.from(deviceId)],
+    program.programId
+  );
+
   console.log("📋 Transfer Details:");
   console.log(`   Device ID:    "${deviceId}"`);
   console.log(`   Device PDA:   ${devicePda.toString()}`);
+  console.log(`   Rewards PDA:  ${deviceRewardsPda.toString()}`);
   console.log(`   Current Owner: ${currentOwner.toString()}`);
   console.log(`   New Owner:     ${newOwner.toString()}\n`);
 
@@ -106,8 +117,10 @@ async function main() {
       .transferOwnership(newOwner)
       .accountsPartial({
         device: devicePda,
-        owner: currentOwner,
+        deviceRewards: deviceRewardsPda,
+        owner: walletKeypair.publicKey,
       })
+      .signers([walletKeypair])
       .rpc();
 
     console.log("✅ Ownership transferred successfully!\n");

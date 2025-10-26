@@ -214,13 +214,13 @@ describe("E2E: IoT Reward System with Auto-Distribution", () => {
     console.log("   Owner auto-received balance:", ownerBalance.value.uiAmount, "AIR");
     console.log("   Treasury remaining:", treasuryBalance.value.uiAmount?.toLocaleString(), "AIR");
 
-    // Verify this device submitted 8 times (5 + 3) and owner received 800 AIR automatically
+    // Verify this device submitted 8 times (5 + 3) and owner received 0.8 AIR automatically
     assert.equal(deviceRewards.totalDataSubmitted.toString(), "8", "Device should have 8 submissions");
-    assert.equal(ownerBalance.value.amount, (800 * 10 ** 9).toString(), "Owner should have received 800 AIR");
+    assert.equal(ownerBalance.value.amount, (0.8 * 10 ** 9).toString(), "Owner should have received 0.8 AIR");
 
-    // Verify treasury decreased by 800 AIR
-    const expectedTreasuryBalance = TOTAL_SUPPLY - (800 * 10 ** 9);
-    assert.equal(treasuryBalance.value.amount, expectedTreasuryBalance.toString(), "Treasury should have distributed 800 AIR");
+    // Verify treasury decreased by 0.8 AIR
+    const expectedTreasuryBalance = TOTAL_SUPPLY - (0.8 * 10 ** 9);
+    assert.equal(treasuryBalance.value.amount, expectedTreasuryBalance.toString(), "Treasury should have distributed 0.8 AIR");
 
     console.log("\n✅ Complete E2E flow with automatic distribution verified!");
     console.log("   1. Token created with 1B supply");

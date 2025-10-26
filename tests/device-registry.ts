@@ -131,11 +131,20 @@ describe("Device Registry - IoT Device Management", () => {
 
     console.log("✅ Ownership transferred:", tx);
 
-    // Verify ownership changed
+    // Verify DeviceRegistry ownership changed
     const deviceAccount = await program.account.deviceRegistry.fetch(device1Address);
     assert.equal(deviceAccount.owner.toString(), newOwner.publicKey.toString());
     console.log("   Old owner:", owner1.publicKey.toString());
     console.log("   New owner:", newOwner.publicKey.toString());
+
+    // Verify DeviceRewards ownership also changed
+    const [deviceRewardsAddress] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("device_rewards"), Buffer.from(deviceId1)],
+      program.programId
+    );
+    const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
+    assert.equal(deviceRewards.owner.toString(), newOwner.publicKey.toString());
+    console.log("   ✅ DeviceRewards owner also updated to:", newOwner.publicKey.toString());
   });
 
   it("Fails when non-owner tries to transfer ownership", async () => {

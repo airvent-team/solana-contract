@@ -34,6 +34,7 @@ pub fn transfer_ownership(
     new_owner: Pubkey,
 ) -> Result<()> {
     let device = &mut ctx.accounts.device;
+    let device_rewards = &mut ctx.accounts.device_rewards;
 
     msg!(
         "Device {} ownership transferred: {} -> {}",
@@ -43,6 +44,7 @@ pub fn transfer_ownership(
     );
 
     device.owner = new_owner;
+    device_rewards.owner = new_owner;
     Ok(())
 }
 
@@ -87,6 +89,7 @@ pub struct RegisterDevice<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(new_owner: Pubkey)]
 pub struct TransferOwnership<'info> {
     /// Device account
     #[account(
@@ -94,6 +97,14 @@ pub struct TransferOwnership<'info> {
         has_one = owner @ ErrorCode::Unauthorized
     )]
     pub device: Account<'info, DeviceRegistry>,
+
+    /// Device rewards account
+    #[account(
+        mut,
+        seeds = [b"device_rewards", device.device_id.as_bytes()],
+        bump
+    )]
+    pub device_rewards: Account<'info, DeviceRewards>,
 
     /// Current owner (must sign)
     pub owner: Signer<'info>,
