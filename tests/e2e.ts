@@ -30,7 +30,7 @@ describe("E2E: IoT Reward System with Auto-Distribution", () => {
   let rewardConfigAddress: PublicKey;
 
   const TOTAL_SUPPLY = 1_000_000_000 * 10 ** 9; // 1 billion
-  const INITIAL_REWARD = 100 * 10 ** 9; // 100 AIR per data
+  const INITIAL_REWARD = 0.1 * 10 ** 9; // 0.1 AIR per data
 
   before(async () => {
     // Fund device owner

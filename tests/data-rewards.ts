@@ -39,7 +39,7 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
 
   // Reward config
   const TOTAL_SUPPLY = 1_000_000_000 * 10 ** 9; // 1 billion
-  const INITIAL_REWARD = 100 * 10 ** 9; // 100 AIR per submission
+  const INITIAL_REWARD = 0.1 * 10 ** 9; // 0.1 AIR per submission
 
   before(async () => {
     // Airdrop SOL to device owners
