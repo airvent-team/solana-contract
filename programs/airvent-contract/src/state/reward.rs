@@ -4,8 +4,14 @@ use anchor_lang::prelude::*;
 #[account]
 #[derive(InitSpace)]
 pub struct RewardConfig {
-    /// Authority that can modify config
+    /// Authority that can modify config (treasury authority)
     pub authority: Pubkey,
+
+    /// Official AIR token mint (fixed)
+    pub mint: Pubkey,
+
+    /// Treasury token account (fixed)
+    pub treasury: Pubkey,
 
     /// Initial reward per data submission (in smallest units)
     pub initial_reward: u64,

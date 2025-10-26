@@ -1,14 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, MintTo},
-};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, MintTo};
 use crate::constants::TOTAL_SUPPLY;
 
 /// Initialize AIR token and mint total supply to treasury
 /// This can only be called once
 pub fn initialize_token(ctx: Context<InitializeToken>) -> Result<()> {
-    // Mint total supply to treasury
+    // Mint total supply to treasury (PDA)
     token::mint_to(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -34,7 +31,7 @@ pub fn initialize_token(ctx: Context<InitializeToken>) -> Result<()> {
         None,
     )?;
 
-    msg!("AIR Token initialized: {} total supply minted to treasury", TOTAL_SUPPLY);
+    msg!("AIR Token initialized: {} total supply minted to treasury PDA", TOTAL_SUPPLY);
     msg!("Mint authority removed - no more tokens can be minted");
     Ok(())
 }
@@ -50,18 +47,16 @@ pub struct InitializeToken<'info> {
     )]
     pub mint: Account<'info, Mint>,
 
-    /// Treasury token account that will hold the total supply
-    /// Created as an Associated Token Account
+    /// Treasury token account (PDA) that will hold the total supply
     #[account(
         init,
         payer = payer,
-        associated_token::mint = mint,
-        associated_token::authority = treasury_authority,
+        seeds = [b"treasury"],
+        bump,
+        token::mint = mint,
+        token::authority = treasury,
     )]
     pub treasury: Account<'info, TokenAccount>,
-
-    /// CHECK: Treasury authority (wallet that controls the treasury)
-    pub treasury_authority: AccountInfo<'info>,
 
     /// Mint authority (will be revoked after initial mint)
     pub mint_authority: Signer<'info>,
@@ -71,6 +66,5 @@ pub struct InitializeToken<'info> {
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
 }

@@ -14,7 +14,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AirventContract } from "../target/types/airvent_contract";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -85,11 +84,13 @@ module.exports = async function (provider: anchor.AnchorProvider) {
 
   console.log(`   Mint Address: ${mintKeypair.publicKey.toString()}\n`);
 
-  // Get treasury token account address
-  const treasuryTokenAccount = await getAssociatedTokenAddress(
-    mintKeypair.publicKey,
-    payer
+  // Derive treasury PDA
+  const [treasuryPda] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("treasury")],
+    program.programId
   );
+
+  console.log(`   Treasury PDA: ${treasuryPda.toString()}\n`);
 
   // Check if token is already initialized
   const mintInfo = await provider.connection.getAccountInfo(
@@ -99,7 +100,7 @@ module.exports = async function (provider: anchor.AnchorProvider) {
   if (mintInfo) {
     console.log("ℹ️  Token already initialized");
     console.log(`   Mint: ${mintKeypair.publicKey.toString()}`);
-    console.log(`   Treasury: ${treasuryTokenAccount.toString()}\n`);
+    console.log(`   Treasury PDA: ${treasuryPda.toString()}\n`);
   } else {
     console.log("🚀 Initializing AIR Token...");
 
@@ -108,7 +109,7 @@ module.exports = async function (provider: anchor.AnchorProvider) {
         .initializeToken()
         .accountsPartial({
           mint: mintKeypair.publicKey,
-          treasuryAuthority: payer,
+          treasury: treasuryPda,
           mintAuthority: payer,
           payer: payer,
         })
@@ -119,10 +120,10 @@ module.exports = async function (provider: anchor.AnchorProvider) {
 
       // Verify treasury balance
       const treasuryBalance = await provider.connection.getTokenAccountBalance(
-        treasuryTokenAccount
+        treasuryPda
       );
       console.log(
-        `   ✓ Treasury Balance: ${treasuryBalance.value.uiAmount?.toLocaleString()} AIR`
+        `   ✓ Treasury PDA Balance: ${treasuryBalance.value.uiAmount?.toLocaleString()} AIR`
       );
       console.log(`   ✓ Mint Authority: REVOKED (no more minting possible)`);
     } catch (error: any) {
@@ -176,6 +177,7 @@ module.exports = async function (provider: anchor.AnchorProvider) {
       const tx = await program.methods
         .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
         .accountsPartial({
+          treasury: treasuryPda,
           authority: payer,
         })
         .rpc();
@@ -215,8 +217,7 @@ module.exports = async function (provider: anchor.AnchorProvider) {
   console.log("│ TOKEN INFO                                              │");
   console.log("├─────────────────────────────────────────────────────────┤");
   console.log(`│ Mint Address:    ${mintKeypair.publicKey.toString().padEnd(35)} │`);
-  console.log(`│ Treasury:        ${treasuryTokenAccount.toString().padEnd(35)} │`);
-  console.log(`│ Treasury Auth:   ${payer.toString().padEnd(35)} │`);
+  console.log(`│ Treasury PDA:    ${treasuryPda.toString().padEnd(35)} │`);
   console.log(`│ Total Supply:    ${(TOTAL_SUPPLY / 10 ** 9).toLocaleString().padEnd(35)} AIR │`);
   console.log("└─────────────────────────────────────────────────────────┘\n");
 
@@ -231,12 +232,12 @@ module.exports = async function (provider: anchor.AnchorProvider) {
   console.log("⚠️  SECURITY NOTES:");
   console.log("   • Mint keypair saved at: .keys/mint-keypair.json");
   console.log("   • Add .keys/ to .gitignore (already configured)");
-  console.log("   • Treasury Authority private key needed for claim operations");
-  console.log("   • Consider using Multisig for production\n");
+  console.log("   • Treasury is a PDA (Program Derived Address) - fully controlled by the program");
+  console.log("   • Rewards are automatically distributed on data submission");
+  console.log("   • Consider using Multisig for admin authority in production\n");
 
   console.log("📋 Next Steps:");
   console.log("   1. Save the addresses above to your .env or config file");
   console.log("   2. Users can now register devices: register_device()");
-  console.log("   3. Server can submit data: submit_data()");
-  console.log("   4. Users can claim rewards: claim_rewards()\n");
+  console.log("   3. Anyone can submit data: submit_data() - rewards auto-distributed\n");
 };

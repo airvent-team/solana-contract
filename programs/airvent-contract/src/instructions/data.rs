@@ -30,14 +30,19 @@ pub fn submit_data(
     let current_reward = config.initial_reward / (2_u64.pow(halving_count as u32));
 
     // Transfer tokens immediately to owner (automatic distribution)
+    // Use PDA signer
+    let seeds = &[b"treasury".as_ref(), &[ctx.bumps.treasury]];
+    let signer_seeds = &[&seeds[..]];
+
     token::transfer(
-        CpiContext::new(
+        CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
             token::Transfer {
                 from: ctx.accounts.treasury.to_account_info(),
                 to: ctx.accounts.owner_token_account.to_account_info(),
-                authority: ctx.accounts.treasury_authority.to_account_info(),
+                authority: ctx.accounts.treasury.to_account_info(),
             },
+            signer_seeds,
         ),
         current_reward,
     )?;
@@ -100,24 +105,25 @@ pub struct SubmitData<'info> {
     #[account(
         mut,
         seeds = [b"reward_config"],
-        bump
+        bump,
     )]
     pub reward_config: Account<'info, RewardConfig>,
 
-    /// Treasury that holds the tokens
-    #[account(mut)]
+    /// Treasury PDA that holds the tokens
+    #[account(
+        mut,
+        seeds = [b"treasury"],
+        bump,
+    )]
     pub treasury: Account<'info, TokenAccount>,
 
     /// Owner's token account to receive rewards (auto-distributed)
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = owner_token_account.mint == treasury.mint @ ErrorCode::InvalidMint,
+        constraint = owner_token_account.owner == device.owner @ ErrorCode::InvalidOwner,
+    )]
     pub owner_token_account: Account<'info, TokenAccount>,
 
-    /// Treasury authority that signs the transfer
-    pub treasury_authority: Signer<'info>,
-
-    /// Server that submits data
-    pub server: Signer<'info>,
-
     pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
 }

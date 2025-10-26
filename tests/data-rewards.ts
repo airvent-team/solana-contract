@@ -18,15 +18,13 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
   // Test accounts
   const deviceOwner1 = anchor.web3.Keypair.generate();
   const deviceOwner2 = anchor.web3.Keypair.generate();
-  const server = provider.wallet; // Server that submits data
-  const treasuryAuthority = provider.wallet.publicKey;
 
   const deviceId1 = "AIRVENT-DATA-001";
   const deviceId2 = "AIRVENT-DATA-002";
 
   // Token
   const mintKeypair = anchor.web3.Keypair.generate();
-  let treasuryTokenAccount: PublicKey;
+  let treasuryPda: PublicKey;
   let owner1TokenAccount: PublicKey;
   let owner2TokenAccount: PublicKey;
 
@@ -58,44 +56,62 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
 
     console.log("✅ Test accounts funded");
 
-    // Initialize AIR token
-    treasuryTokenAccount = await getAssociatedTokenAddress(
-      mintKeypair.publicKey,
-      treasuryAuthority
+    // Derive treasury PDA
+    [treasuryPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("treasury")],
+      program.programId
     );
 
-    await program.methods
-      .initializeToken()
-      .accounts({
-        mint: mintKeypair.publicKey,
-        treasury: treasuryTokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        mintAuthority: treasuryAuthority,
-        payer: treasuryAuthority,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .signers([mintKeypair])
-      .rpc();
+    // Check if treasury already exists (from previous test suite)
+    const treasuryInfo = await provider.connection.getAccountInfo(treasuryPda);
+
+    if (!treasuryInfo) {
+      // Initialize AIR token with treasury PDA
+      await program.methods
+        .initializeToken()
+        .accounts({
+          mint: mintKeypair.publicKey,
+          treasury: treasuryPda,
+          mintAuthority: provider.wallet.publicKey,
+          payer: provider.wallet.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([mintKeypair])
+        .rpc();
+      console.log("✅ AIR token initialized and owner accounts created");
+    } else {
+      console.log("✅ Treasury PDA already exists (reusing from previous test)");
+    }
+
+    // Get mint address (either from newly created token or from existing treasury)
+    let actualMint = mintKeypair.publicKey;
+    if (treasuryInfo) {
+      // Treasury exists - get mint from the treasury token account
+      const treasuryAccountInfo = await provider.connection.getParsedAccountInfo(treasuryPda);
+      if (treasuryAccountInfo && treasuryAccountInfo.value && "parsed" in treasuryAccountInfo.value.data) {
+        actualMint = new PublicKey(treasuryAccountInfo.value.data.parsed.info.mint);
+        console.log("   Using existing mint from treasury:", actualMint.toString());
+      }
+    }
 
     // Create owner token accounts
     owner1TokenAccount = await createAssociatedTokenAccount(
       provider.connection,
       provider.wallet.payer,
-      mintKeypair.publicKey,
+      actualMint,
       deviceOwner1.publicKey
     );
 
     owner2TokenAccount = await createAssociatedTokenAccount(
       provider.connection,
       provider.wallet.payer,
-      mintKeypair.publicKey,
+      actualMint,
       deviceOwner2.publicKey
     );
 
-    console.log("✅ AIR token initialized and owner accounts created");
+    console.log("✅ Owner token accounts created");
   });
 
   it("Initializes reward configuration with 4-year halving", async () => {
@@ -112,6 +128,7 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
         .initializeRewardConfig(new anchor.BN(INITIAL_REWARD))
         .accounts({
           rewardConfig: rewardConfigAddress,
+          treasury: treasuryPda,
           authority: provider.wallet.publicKey,
           systemProgram: anchor.web3.SystemProgram.programId,
         })
@@ -184,12 +201,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
-        treasury: treasuryTokenAccount,
+        treasury: treasuryPda,
         ownerTokenAccount: owner1TokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        server: server.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID
       })
       .rpc();
 
@@ -218,12 +232,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
-        treasury: treasuryTokenAccount,
+        treasury: treasuryPda,
         ownerTokenAccount: owner1TokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        server: server.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
 
@@ -247,12 +258,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
           device: device1Address,
           deviceRewards: device1RewardsAddress,
           rewardConfig: rewardConfigAddress,
-          treasury: treasuryTokenAccount,
+          treasury: treasuryPda,
           ownerTokenAccount: owner1TokenAccount,
-          treasuryAuthority: treasuryAuthority,
-          server: server.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
     }
@@ -279,12 +287,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
         device: device2Address,
         deviceRewards: device2RewardsAddress,
         rewardConfig: rewardConfigAddress,
-        treasury: treasuryTokenAccount,
+        treasury: treasuryPda,
         ownerTokenAccount: owner2TokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        server: server.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
 
@@ -328,12 +333,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
-        treasury: treasuryTokenAccount,
+        treasury: treasuryPda,
         ownerTokenAccount: owner2TokenAccount, // Now sending to owner2's account
-        treasuryAuthority: treasuryAuthority,
-        server: server.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
 
@@ -395,12 +397,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
           device: unregisteredDeviceAddress,
           deviceRewards: unregisteredRewardsAddress,
           rewardConfig: rewardConfigAddress,
-          treasury: treasuryTokenAccount,
+          treasury: treasuryPda,
           ownerTokenAccount: owner1TokenAccount,
-          treasuryAuthority: treasuryAuthority,
-          server: server.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
 
@@ -436,12 +435,9 @@ describe("Data Collection & Auto-Distribution with Halving", () => {
           device: device2Address,
           deviceRewards: device2RewardsAddress,
           rewardConfig: rewardConfigAddress,
-          treasury: treasuryTokenAccount,
+          treasury: treasuryPda,
           ownerTokenAccount: owner2TokenAccount,
-          treasuryAuthority: treasuryAuthority,
-          server: server.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
 

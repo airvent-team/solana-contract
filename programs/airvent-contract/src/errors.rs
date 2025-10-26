@@ -13,4 +13,13 @@ pub enum ErrorCode {
 
     #[msg("Device is not active")]
     DeviceNotActive,
+
+    #[msg("Invalid treasury account")]
+    InvalidTreasury,
+
+    #[msg("Invalid token mint")]
+    InvalidMint,
+
+    #[msg("Invalid token account owner")]
+    InvalidOwner,
 }
