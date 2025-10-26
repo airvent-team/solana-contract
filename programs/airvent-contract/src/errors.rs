@@ -13,7 +13,4 @@ pub enum ErrorCode {
 
     #[msg("Device is not active")]
     DeviceNotActive,
-
-    #[msg("No rewards to claim")]
-    NoRewardsToClaim,
 }

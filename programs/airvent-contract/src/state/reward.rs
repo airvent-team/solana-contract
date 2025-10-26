@@ -16,13 +16,12 @@ pub struct RewardConfig {
     /// Total data submissions across all devices (statistics)
     pub total_data_submitted: u64,
 
-    /// Total rewards distributed (in points, not claimed tokens)
+    /// Total rewards distributed (in tokens, automatically)
     pub total_rewards_distributed: u64,
 }
 
-/// Device's accumulated rewards
-/// Rewards are tied to device, not user
-/// When device ownership changes, rewards go with the device
+/// Device's reward statistics
+/// Rewards are automatically distributed on each data submission
 #[account]
 #[derive(InitSpace)]
 pub struct DeviceRewards {
@@ -32,9 +31,6 @@ pub struct DeviceRewards {
 
     /// Current owner of the device (updated on ownership transfer)
     pub owner: Pubkey,
-
-    /// Accumulated reward points (not yet claimed)
-    pub accumulated_points: u64,
 
     /// Total data submissions by this device
     pub total_data_submitted: u64,

@@ -9,7 +9,7 @@ import {
 import { PublicKey } from "@solana/web3.js";
 import { assert } from "chai";
 
-describe("E2E: IoT Reward System", () => {
+describe("E2E: IoT Reward System with Auto-Distribution", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -96,7 +96,7 @@ describe("E2E: IoT Reward System", () => {
       console.log("✅ Reward config already exists (reusing from previous test)");
     }
 
-    console.log("   Initial reward:", INITIAL_REWARD / 10 ** 9, "AIR per data");
+    console.log("   Initial reward:", INITIAL_REWARD / 10 ** 9, "AIR per data (AUTO-DISTRIBUTED)");
   });
 
   it("3. Registers IoT device", async () => {
@@ -105,10 +105,16 @@ describe("E2E: IoT Reward System", () => {
       program.programId
     );
 
+    [deviceRewardsAddress] = PublicKey.findProgramAddressSync(
+      [Buffer.from("device_rewards"), Buffer.from(deviceId)],
+      program.programId
+    );
+
     await program.methods
       .registerDevice(deviceId)
       .accounts({
         device: deviceAddress,
+        deviceRewards: deviceRewardsAddress,
         owner: deviceOwner.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -120,36 +126,7 @@ describe("E2E: IoT Reward System", () => {
     console.log("   Owner:", deviceOwner.publicKey.toString());
   });
 
-  it("4. Device submits data and accumulates rewards", async () => {
-    [deviceRewardsAddress] = PublicKey.findProgramAddressSync(
-      [Buffer.from("device_rewards"), Buffer.from(deviceId)],
-      program.programId
-    );
-
-    // Submit 5 data points
-    for (let i = 0; i < 5; i++) {
-      await program.methods
-        .submitData(deviceId, (25 + i) * 10, (40 + i) * 10, 250 + i * 3, 650 + i * 10) // Varying PM/temp/humidity
-        .accounts({
-          device: deviceAddress,
-          deviceRewards: deviceRewardsAddress,
-          rewardConfig: rewardConfigAddress,
-          server: server.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        })
-        .rpc();
-    }
-
-    console.log("✅ Submitted 5 data points");
-
-    const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
-    const expectedRewards = INITIAL_REWARD * 5;
-
-    assert.equal(deviceRewards.accumulatedPoints.toString(), expectedRewards.toString());
-    console.log("   Accumulated rewards:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
-  });
-
-  it("5. Owner creates token account", async () => {
+  it("4. Creates owner token account", async () => {
     ownerTokenAccount = await createAssociatedTokenAccount(
       provider.connection,
       provider.wallet.payer,
@@ -161,44 +138,43 @@ describe("E2E: IoT Reward System", () => {
     console.log("   Account:", ownerTokenAccount.toString());
   });
 
-  it("6. Owner claims rewards and receives AIR tokens", async () => {
-    const deviceRewardsBefore = await program.account.deviceRewards.fetch(deviceRewardsAddress);
-    const amountToClaim = deviceRewardsBefore.accumulatedPoints.toNumber();
+  it("5. Device submits data and auto-receives rewards", async () => {
+    // Submit 5 data points - rewards distributed automatically on each submission
+    for (let i = 0; i < 5; i++) {
+      await program.methods
+        .submitData(deviceId, (25 + i) * 10, (40 + i) * 10, 250 + i * 3, 650 + i * 10) // Varying PM/temp/humidity
+        .accounts({
+          device: deviceAddress,
+          deviceRewards: deviceRewardsAddress,
+          rewardConfig: rewardConfigAddress,
+          treasury: treasuryTokenAccount,
+          ownerTokenAccount: ownerTokenAccount,
+          treasuryAuthority: treasuryAuthority,
+          server: server.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+    }
 
-    const tx = await program.methods
-      .claimRewards(deviceId)
-      .accounts({
-        device: deviceAddress,
-        deviceRewards: deviceRewardsAddress,
-        treasury: treasuryTokenAccount,
-        ownerTokenAccount: ownerTokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        owner: deviceOwner.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([deviceOwner])
-      .rpc();
+    console.log("✅ Submitted 5 data points");
 
-    console.log("✅ Rewards claimed:", tx);
-
-    // Verify owner received tokens
+    // Verify rewards were automatically distributed
     const ownerBalance = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
-    assert.equal(ownerBalance.value.amount, amountToClaim.toString());
-    console.log("   Owner received:", ownerBalance.value.uiAmount, "AIR");
+    const expectedRewards = INITIAL_REWARD * 5;
 
-    // Verify device rewards reset to 0
-    const deviceRewardsAfter = await program.account.deviceRewards.fetch(deviceRewardsAddress);
-    assert.equal(deviceRewardsAfter.accumulatedPoints.toString(), "0");
-    console.log("   Device points reset to:", deviceRewardsAfter.accumulatedPoints.toString());
+    assert.equal(ownerBalance.value.amount, expectedRewards.toString());
+    console.log("   Automatically received:", ownerBalance.value.uiAmount, "AIR");
 
-    // Verify treasury balance decreased
-    const treasuryBalance = await provider.connection.getTokenAccountBalance(treasuryTokenAccount);
-    const expectedTreasuryBalance = TOTAL_SUPPLY - amountToClaim;
-    assert.equal(treasuryBalance.value.amount, expectedTreasuryBalance.toString());
-    console.log("   Treasury balance:", treasuryBalance.value.uiAmount?.toLocaleString(), "AIR");
+    // Verify device stats (no accumulated points, just stats)
+    const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
+    assert.equal(deviceRewards.totalDataSubmitted.toString(), "5");
+    console.log("   Device submissions:", deviceRewards.totalDataSubmitted.toString());
   });
 
-  it("7. Device submits more data after claim", async () => {
+  it("6. Device submits more data - rewards continue auto-distributing", async () => {
+    const ownerBalanceBefore = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
+
     // Submit 3 more data points
     for (let i = 0; i < 3; i++) {
       await program.methods
@@ -207,7 +183,11 @@ describe("E2E: IoT Reward System", () => {
           device: deviceAddress,
           deviceRewards: deviceRewardsAddress,
           rewardConfig: rewardConfigAddress,
+          treasury: treasuryTokenAccount,
+          ownerTokenAccount: ownerTokenAccount,
+          treasuryAuthority: treasuryAuthority,
           server: server.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
@@ -215,66 +195,38 @@ describe("E2E: IoT Reward System", () => {
 
     console.log("✅ Submitted 3 more data points");
 
-    const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
-    const expectedNewRewards = INITIAL_REWARD * 3;
-
-    assert.equal(deviceRewards.accumulatedPoints.toString(), expectedNewRewards.toString());
-    console.log("   New accumulated rewards:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
-  });
-
-  it("8. Owner claims again", async () => {
-    const ownerBalanceBefore = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
-    const deviceRewardsBefore = await program.account.deviceRewards.fetch(deviceRewardsAddress);
-
-    await program.methods
-      .claimRewards(deviceId)
-      .accounts({
-        device: deviceAddress,
-        deviceRewards: deviceRewardsAddress,
-        treasury: treasuryTokenAccount,
-        ownerTokenAccount: ownerTokenAccount,
-        treasuryAuthority: treasuryAuthority,
-        owner: deviceOwner.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([deviceOwner])
-      .rpc();
-
-    console.log("✅ Second claim successful");
-
+    // Verify rewards were added automatically
     const ownerBalanceAfter = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
-    const totalReceived =
-      Number(ownerBalanceBefore.value.amount) + Number(deviceRewardsBefore.accumulatedPoints);
+    const expectedNewRewards = INITIAL_REWARD * 3;
+    const totalReceived = Number(ownerBalanceBefore.value.amount) + expectedNewRewards;
 
     assert.equal(ownerBalanceAfter.value.amount, totalReceived.toString());
     console.log("   Total owner balance:", ownerBalanceAfter.value.uiAmount, "AIR");
   });
 
-  it("9. Verifies complete flow statistics", async () => {
+  it("7. Verifies complete E2E flow with automatic distribution", async () => {
     const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsAddress);
     const ownerBalance = await provider.connection.getTokenAccountBalance(ownerTokenAccount);
     const treasuryBalance = await provider.connection.getTokenAccountBalance(treasuryTokenAccount);
 
     console.log("\n📊 E2E Test Results:");
     console.log("   Device total submissions:", deviceRewards.totalDataSubmitted.toString());
-    console.log("   Device pending rewards:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
-    console.log("   Owner claimed balance:", ownerBalance.value.uiAmount, "AIR");
+    console.log("   Owner auto-received balance:", ownerBalance.value.uiAmount, "AIR");
     console.log("   Treasury remaining:", treasuryBalance.value.uiAmount?.toLocaleString(), "AIR");
 
-    // Verify this device submitted 8 times (5 + 3) and owner received 800 AIR
+    // Verify this device submitted 8 times (5 + 3) and owner received 800 AIR automatically
     assert.equal(deviceRewards.totalDataSubmitted.toString(), "8", "Device should have 8 submissions");
-    assert.equal(deviceRewards.accumulatedPoints.toString(), "0", "Device should have 0 pending rewards after claims");
     assert.equal(ownerBalance.value.amount, (800 * 10 ** 9).toString(), "Owner should have received 800 AIR");
 
     // Verify treasury decreased by 800 AIR
     const expectedTreasuryBalance = TOTAL_SUPPLY - (800 * 10 ** 9);
     assert.equal(treasuryBalance.value.amount, expectedTreasuryBalance.toString(), "Treasury should have distributed 800 AIR");
 
-    console.log("\n✅ Complete E2E flow verified!");
+    console.log("\n✅ Complete E2E flow with automatic distribution verified!");
     console.log("   1. Token created with 1B supply");
     console.log("   2. Device registered to owner");
-    console.log("   3. Data submitted → Rewards accumulated");
-    console.log("   4. Owner claimed → AIR tokens received");
-    console.log("   5. Rewards reset → Can accumulate again");
+    console.log("   3. Data submitted → Rewards automatically distributed");
+    console.log("   4. No manual claim needed → Instant AIR tokens");
+    console.log("   5. Seamless user experience");
   });
 });

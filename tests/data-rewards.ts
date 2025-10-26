@@ -1,10 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AirventContract } from "../target/types/airvent_contract";
+import {
+  TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccount,
+} from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
 import { assert } from "chai";
 
-describe("Data Collection & Time-based Halving (4 years)", () => {
+describe("Data Collection & Auto-Distribution with Halving", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -14,10 +19,18 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
   const deviceOwner1 = anchor.web3.Keypair.generate();
   const deviceOwner2 = anchor.web3.Keypair.generate();
   const server = provider.wallet; // Server that submits data
+  const treasuryAuthority = provider.wallet.publicKey;
 
   const deviceId1 = "AIRVENT-DATA-001";
   const deviceId2 = "AIRVENT-DATA-002";
 
+  // Token
+  const mintKeypair = anchor.web3.Keypair.generate();
+  let treasuryTokenAccount: PublicKey;
+  let owner1TokenAccount: PublicKey;
+  let owner2TokenAccount: PublicKey;
+
+  // PDAs
   let device1Address: PublicKey;
   let device2Address: PublicKey;
   let rewardConfigAddress: PublicKey;
@@ -25,6 +38,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
   let device2RewardsAddress: PublicKey;
 
   // Reward config
+  const TOTAL_SUPPLY = 1_000_000_000 * 10 ** 9; // 1 billion
   const INITIAL_REWARD = 100 * 10 ** 9; // 100 AIR per submission
 
   before(async () => {
@@ -43,6 +57,45 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     );
 
     console.log("✅ Test accounts funded");
+
+    // Initialize AIR token
+    treasuryTokenAccount = await getAssociatedTokenAddress(
+      mintKeypair.publicKey,
+      treasuryAuthority
+    );
+
+    await program.methods
+      .initializeToken()
+      .accounts({
+        mint: mintKeypair.publicKey,
+        treasury: treasuryTokenAccount,
+        treasuryAuthority: treasuryAuthority,
+        mintAuthority: treasuryAuthority,
+        payer: treasuryAuthority,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: anchor.utils.token.ASSOCIATED_PROGRAM_ID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([mintKeypair])
+      .rpc();
+
+    // Create owner token accounts
+    owner1TokenAccount = await createAssociatedTokenAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mintKeypair.publicKey,
+      deviceOwner1.publicKey
+    );
+
+    owner2TokenAccount = await createAssociatedTokenAccount(
+      provider.connection,
+      provider.wallet.payer,
+      mintKeypair.publicKey,
+      deviceOwner2.publicKey
+    );
+
+    console.log("✅ AIR token initialized and owner accounts created");
   });
 
   it("Initializes reward configuration with 4-year halving", async () => {
@@ -73,7 +126,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     assert.isAbove(Number(config.startTimestamp), 0);
 
     const startDate = new Date(Number(config.startTimestamp) * 1000);
-    console.log("   Initial reward:", config.initialReward.toNumber() / 10 ** 9, "AIR per data");
+    console.log("   Initial reward:", config.initialReward.toNumber() / 10 ** 9, "AIR per data (AUTO-DISTRIBUTED)");
     console.log("   Halving interval: 4 years");
     console.log("   System start time:", startDate.toISOString());
   });
@@ -84,8 +137,18 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
       program.programId
     );
 
+    [device1RewardsAddress] = PublicKey.findProgramAddressSync(
+      [Buffer.from("device_rewards"), Buffer.from(deviceId1)],
+      program.programId
+    );
+
     [device2Address] = PublicKey.findProgramAddressSync(
       [Buffer.from("device"), Buffer.from(deviceId2)],
+      program.programId
+    );
+
+    [device2RewardsAddress] = PublicKey.findProgramAddressSync(
+      [Buffer.from("device_rewards"), Buffer.from(deviceId2)],
       program.programId
     );
 
@@ -93,6 +156,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
       .registerDevice(deviceId1)
       .accounts({
         device: device1Address,
+        deviceRewards: device1RewardsAddress,
         owner: deviceOwner1.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -103,6 +167,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
       .registerDevice(deviceId2)
       .accounts({
         device: device2Address,
+        deviceRewards: device2RewardsAddress,
         owner: deviceOwner2.publicKey,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
@@ -112,19 +177,18 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("✅ Devices registered");
   });
 
-  it("Device 1 submits data and earns full reward (epoch 0)", async () => {
-    [device1RewardsAddress] = PublicKey.findProgramAddressSync(
-      [Buffer.from("device_rewards"), Buffer.from(deviceId1)],
-      program.programId
-    );
-
+  it("Device 1 submits data and auto-receives reward (epoch 0)", async () => {
     const tx = await program.methods
       .submitData(deviceId1, 350, 500, 253, 655) // PM2.5: 35.0, PM10: 50.0, Temp: 25.3°C, Humidity: 65.5%
       .accounts({
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
+        treasury: treasuryTokenAccount,
+        ownerTokenAccount: owner1TokenAccount,
+        treasuryAuthority: treasuryAuthority,
         server: server.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
@@ -133,19 +197,20 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
     const config = await program.account.rewardConfig.fetch(rewardConfigAddress);
+    const ownerBalance = await provider.connection.getTokenAccountBalance(owner1TokenAccount);
 
     assert.equal(deviceRewards.deviceId, deviceId1);
     assert.equal(deviceRewards.owner.toString(), deviceOwner1.publicKey.toString());
-    assert.equal(deviceRewards.accumulatedPoints.toString(), INITIAL_REWARD.toString());
     assert.equal(deviceRewards.totalDataSubmitted.toString(), "1");
+    assert.equal(ownerBalance.value.amount, INITIAL_REWARD.toString());
 
     console.log("   Device:", deviceRewards.deviceId);
     console.log("   Owner:", deviceRewards.owner.toString());
-    console.log("   Accumulated points:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
+    console.log("   Automatically received:", ownerBalance.value.uiAmount, "AIR");
     console.log("   Global submissions:", config.totalDataSubmitted.toString());
   });
 
-  it("Verifies DataSubmitted event is emitted (integration)", async () => {
+  it("Verifies DataSubmitted event is emitted", async () => {
     // Submit data - event will be emitted automatically
     const txSignature = await program.methods
       .submitData(deviceId1, 420, 580, 268, 702) // PM2.5: 42.0, PM10: 58.0, Temp: 26.8°C, Humidity: 70.2%
@@ -153,7 +218,11 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
+        treasury: treasuryTokenAccount,
+        ownerTokenAccount: owner1TokenAccount,
+        treasuryAuthority: treasuryAuthority,
         server: server.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
@@ -163,20 +232,26 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("   ✅ Events are stored in Solana program logs");
     console.log("   💡 Use Helius/Triton indexer to query historical events");
 
-    // Verify rewards were actually accumulated (indirect event verification)
-    const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
-    assert.isAbove(deviceRewards.accumulatedPoints.toNumber(), 0, "Rewards should be accumulated");
+    // Verify rewards were distributed (indirect event verification)
+    const ownerBalance = await provider.connection.getTokenAccountBalance(owner1TokenAccount);
+    assert.equal(ownerBalance.value.amount, (INITIAL_REWARD * 2).toString());
   });
 
-  it("Device 1 submits more data - rewards accumulate on device", async () => {
+  it("Device 1 submits more data - rewards auto-accumulate", async () => {
+    const balanceBefore = await provider.connection.getTokenAccountBalance(owner1TokenAccount);
+
     for (let i = 0; i < 5; i++) {
       await program.methods
-        .submitData(deviceId1, (30 + i) * 10, (45 + i) * 10, 230 + i * 2, 600 + i * 5) // Varying PM/temp/humidity
+        .submitData(deviceId1, (30 + i) * 10, (45 + i) * 10, 230 + i * 2, 600 + i * 5)
         .accounts({
           device: device1Address,
           deviceRewards: device1RewardsAddress,
           rewardConfig: rewardConfigAddress,
+          treasury: treasuryTokenAccount,
+          ownerTokenAccount: owner1TokenAccount,
+          treasuryAuthority: treasuryAuthority,
           server: server.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
@@ -185,28 +260,30 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("✅ Submitted 5 more data points");
 
     const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
+    const balanceAfter = await provider.connection.getTokenAccountBalance(owner1TokenAccount);
 
-    // Total: 7 submissions × 100 AIR = 700 AIR (1 initial + 1 event test + 5 here)
-    const expectedPoints = INITIAL_REWARD * 7;
-    assert.equal(deviceRewards.accumulatedPoints.toString(), expectedPoints.toString());
+    // Total: 7 submissions (1 initial + 1 event test + 5 here)
+    assert.equal(deviceRewards.totalDataSubmitted.toString(), "7");
 
-    console.log("   Device 1 total accumulated:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
-    console.log("   Total submissions:", deviceRewards.totalDataSubmitted.toString());
+    const expectedTotal = INITIAL_REWARD * 7;
+    assert.equal(balanceAfter.value.amount, expectedTotal.toString());
+
+    console.log("   Device 1 total submissions:", deviceRewards.totalDataSubmitted.toString());
+    console.log("   Owner 1 total received:", balanceAfter.value.uiAmount, "AIR");
   });
 
-  it("Device 2 submits data - rewards tied to device, not owner", async () => {
-    [device2RewardsAddress] = PublicKey.findProgramAddressSync(
-      [Buffer.from("device_rewards"), Buffer.from(deviceId2)],
-      program.programId
-    );
-
+  it("Device 2 submits data - rewards auto-distributed separately", async () => {
     const tx = await program.methods
-      .submitData(deviceId2, 400, 600, 220, 580) // PM2.5: 40.0, PM10: 60.0, Temp: 22.0°C, Humidity: 58.0%
+      .submitData(deviceId2, 400, 600, 220, 580)
       .accounts({
         device: device2Address,
         deviceRewards: device2RewardsAddress,
         rewardConfig: rewardConfigAddress,
+        treasury: treasuryTokenAccount,
+        ownerTokenAccount: owner2TokenAccount,
+        treasuryAuthority: treasuryAuthority,
         server: server.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
@@ -214,15 +291,16 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     console.log("✅ Data submitted (Device 2):", tx);
 
     const deviceRewards = await program.account.deviceRewards.fetch(device2RewardsAddress);
+    const ownerBalance = await provider.connection.getTokenAccountBalance(owner2TokenAccount);
 
     assert.equal(deviceRewards.deviceId, deviceId2);
     assert.equal(deviceRewards.owner.toString(), deviceOwner2.publicKey.toString());
-    assert.equal(deviceRewards.accumulatedPoints.toString(), INITIAL_REWARD.toString());
+    assert.equal(ownerBalance.value.amount, INITIAL_REWARD.toString());
 
-    console.log("   Device 2 accumulated:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
+    console.log("   Device 2 owner received:", ownerBalance.value.uiAmount, "AIR");
   });
 
-  it("Transfer device 1 ownership - rewards stay with device", async () => {
+  it("Transfer device 1 ownership - rewards continue to new owner", async () => {
     // Transfer ownership from owner1 to owner2
     const newOwner = deviceOwner2.publicKey;
 
@@ -241,49 +319,65 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     const device = await program.account.deviceRegistry.fetch(device1Address);
     assert.equal(device.owner.toString(), newOwner.toString());
 
-    // Submit more data - rewards should update owner info
+    // Submit more data - rewards should go to NEW owner (owner2)
+    const owner2BalanceBefore = await provider.connection.getTokenAccountBalance(owner2TokenAccount);
+
     await program.methods
-      .submitData(deviceId1, 420, 580, 245, 620) // PM2.5: 42.0, PM10: 58.0, Temp: 24.5°C, Humidity: 62.0%
+      .submitData(deviceId1, 420, 580, 245, 620)
       .accounts({
         device: device1Address,
         deviceRewards: device1RewardsAddress,
         rewardConfig: rewardConfigAddress,
+        treasury: treasuryTokenAccount,
+        ownerTokenAccount: owner2TokenAccount, // Now sending to owner2's account
+        treasuryAuthority: treasuryAuthority,
         server: server.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
 
+    const owner2BalanceAfter = await provider.connection.getTokenAccountBalance(owner2TokenAccount);
     const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
 
-    // Rewards accumulated + new owner updated
+    // Owner updated
     assert.equal(deviceRewards.owner.toString(), newOwner.toString());
-    const expectedPoints = INITIAL_REWARD * 8; // 7 previous + 1 new submission
-    assert.equal(deviceRewards.accumulatedPoints.toString(), expectedPoints.toString());
+
+    // Owner2 received reward
+    const expectedIncrease = INITIAL_REWARD;
+    assert.equal(
+      Number(owner2BalanceAfter.value.amount) - Number(owner2BalanceBefore.value.amount),
+      expectedIncrease
+    );
 
     console.log("   Device 1 new owner:", deviceRewards.owner.toString());
-    console.log("   Rewards preserved:", deviceRewards.accumulatedPoints.toNumber() / 10 ** 9, "AIR");
+    console.log("   New owner received reward:", expectedIncrease / 10 ** 9, "AIR");
   });
 
-  it("Verifies rewards are device-based, not user-based", async () => {
+  it("Verifies auto-distribution across multiple devices and owners", async () => {
     const device1Rewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
     const device2Rewards = await program.account.deviceRewards.fetch(device2RewardsAddress);
+    const owner1Balance = await provider.connection.getTokenAccountBalance(owner1TokenAccount);
+    const owner2Balance = await provider.connection.getTokenAccountBalance(owner2TokenAccount);
     const config = await program.account.rewardConfig.fetch(rewardConfigAddress);
 
-    console.log("\n📊 Statistics Before Claim:");
+    console.log("\n📊 Auto-Distribution Statistics:");
     console.log("   Total submissions:", config.totalDataSubmitted.toString());
     console.log("   Total rewards distributed:", config.totalRewardsDistributed.toNumber() / 10 ** 9, "AIR");
-    console.log("\n   Device-based rewards:");
-    console.log(`   ${deviceId1}: ${device1Rewards.accumulatedPoints.toNumber() / 10 ** 9} AIR (Owner: ${device1Rewards.owner.toString().slice(0, 8)}...)`);
-    console.log(`   ${deviceId2}: ${device2Rewards.accumulatedPoints.toNumber() / 10 ** 9} AIR (Owner: ${device2Rewards.owner.toString().slice(0, 8)}...)`);
-    console.log("\n   ✅ Rewards are tied to devices, not users");
-    console.log("   ✅ Device ownership transfer preserves accumulated rewards");
-    console.log("   ✅ Halving interval: 4 years (time-based, like Bitcoin)");
+    console.log("\n   Device-based stats:");
+    console.log(`   ${deviceId1}: ${device1Rewards.totalDataSubmitted} submissions (Owner: ${device1Rewards.owner.toString().slice(0, 8)}...)`);
+    console.log(`   ${deviceId2}: ${device2Rewards.totalDataSubmitted} submission (Owner: ${device2Rewards.owner.toString().slice(0, 8)}...)`);
+    console.log("\n   Owner balances:");
+    console.log(`   Owner 1: ${owner1Balance.value.uiAmount} AIR`);
+    console.log(`   Owner 2: ${owner2Balance.value.uiAmount} AIR`);
+    console.log("\n   ✅ Rewards auto-distributed on each submission");
+    console.log("   ✅ No manual claim needed");
+    console.log("   ✅ Ownership transfer works seamlessly");
   });
 
   it("Fails when unregistered device tries to submit data", async () => {
     const unregisteredDeviceId = "AIRVENT-UNREGISTERED-999";
 
-    // Try to derive the device rewards PDA for unregistered device
     const [unregisteredDeviceAddress] = PublicKey.findProgramAddressSync(
       [Buffer.from("device"), Buffer.from(unregisteredDeviceId)],
       program.programId
@@ -296,20 +390,22 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     try {
       await program.methods
-        .submitData(unregisteredDeviceId, 500, 700, 250, 650) // PM2.5: 50.0, PM10: 70.0, Temp: 25.0°C, Humidity: 65.0%
+        .submitData(unregisteredDeviceId, 500, 700, 250, 650)
         .accounts({
           device: unregisteredDeviceAddress,
           deviceRewards: unregisteredRewardsAddress,
           rewardConfig: rewardConfigAddress,
+          treasury: treasuryTokenAccount,
+          ownerTokenAccount: owner1TokenAccount,
+          treasuryAuthority: treasuryAuthority,
           server: server.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
 
-      // If we get here, the test should fail
       assert.fail("Should have failed with AccountNotInitialized error");
     } catch (err: any) {
-      // Verify it failed because device account doesn't exist
       assert.include(
         err.toString(),
         "AccountNotInitialized",
@@ -335,12 +431,16 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     // Try to submit data with inactive device
     try {
       await program.methods
-        .submitData(deviceId2, 300, 500, 235, 600) // PM2.5: 30.0, PM10: 50.0, Temp: 23.5°C, Humidity: 60.0%
+        .submitData(deviceId2, 300, 500, 235, 600)
         .accounts({
           device: device2Address,
           deviceRewards: device2RewardsAddress,
           rewardConfig: rewardConfigAddress,
+          treasury: treasuryTokenAccount,
+          ownerTokenAccount: owner2TokenAccount,
+          treasuryAuthority: treasuryAuthority,
           server: server.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: anchor.web3.SystemProgram.programId,
         })
         .rpc();
@@ -354,81 +454,5 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
       );
       console.log("✅ Correctly prevented data submission from inactive device");
     }
-  });
-
-  it("Fails when claiming with 0 rewards", async () => {
-    // Register a new device that has never submitted data
-    const emptyDeviceId = "AIRVENT-EMPTY-999";
-    const emptyDeviceOwner = anchor.web3.Keypair.generate();
-
-    // Fund the owner
-    await provider.connection.confirmTransaction(
-      await provider.connection.requestAirdrop(
-        emptyDeviceOwner.publicKey,
-        2 * anchor.web3.LAMPORTS_PER_SOL
-      )
-    );
-
-    const [emptyDeviceAddress] = PublicKey.findProgramAddressSync(
-      [Buffer.from("device"), Buffer.from(emptyDeviceId)],
-      program.programId
-    );
-
-    const [emptyRewardsAddress] = PublicKey.findProgramAddressSync(
-      [Buffer.from("device_rewards"), Buffer.from(emptyDeviceId)],
-      program.programId
-    );
-
-    // Register the device
-    await program.methods
-      .registerDevice(emptyDeviceId)
-      .accounts({
-        device: emptyDeviceAddress,
-        deviceRewards: emptyRewardsAddress,
-        owner: emptyDeviceOwner.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      })
-      .signers([emptyDeviceOwner])
-      .rpc();
-
-    // Verify device has 0 rewards
-    const emptyRewards = await program.account.deviceRewards.fetch(emptyRewardsAddress);
-    assert.equal(emptyRewards.accumulatedPoints.toString(), "0");
-
-    console.log("✅ Verified device with 0 rewards cannot claim (tested via account state)");
-    console.log("   (Full claim test with token transfer requires token initialization)");
-  });
-
-  it("Verifies ownership constraint for claiming", async () => {
-    // Device 1 was transferred from deviceOwner1 to deviceOwner2
-    // Verify the ownership is correctly updated
-
-    const device = await program.account.deviceRegistry.fetch(device1Address);
-    const deviceRewards = await program.account.deviceRewards.fetch(device1RewardsAddress);
-
-    // Both should show deviceOwner2 as the owner (after transfer)
-    assert.equal(device.owner.toString(), deviceOwner2.publicKey.toString());
-    assert.equal(deviceRewards.owner.toString(), deviceOwner2.publicKey.toString());
-
-    // Device 1 should have rewards accumulated
-    assert.isAbove(deviceRewards.accumulatedPoints.toNumber(), 0);
-
-    console.log("✅ Verified ownership constraints:");
-    console.log(`   Device: ${deviceId1}`);
-    console.log(`   Current owner: ${device.owner.toString().slice(0, 8)}...`);
-    console.log(`   Accumulated rewards: ${deviceRewards.accumulatedPoints.toNumber() / 10 ** 9} AIR`);
-    console.log("   (Only current owner can claim via has_one constraint)");
-  });
-
-  // Add claim tests
-  it("Owner claims rewards from Device 2", async () => {
-    const { getAssociatedTokenAddress, createAssociatedTokenAccount, TOKEN_PROGRAM_ID } =
-      await import("@solana/spl-token");
-
-    // Get treasury address
-    const mintKeypair = anchor.web3.Keypair.generate(); // We need the actual mint from token test
-    // For this test, we'll create a temporary setup
-
-    console.log("✅ Claim functionality ready - integrate with token system for full test");
   });
 });

@@ -1,11 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount};
 use crate::{
     constants::HALVING_INTERVAL_SECONDS,
     errors::ErrorCode,
     state::{DeviceRegistry, DeviceRewards, RewardConfig, DataSubmitted},
 };
 
-/// Submit IoT data and accumulate rewards
+/// Submit IoT data and automatically distribute rewards
 /// Server calls this when device sends data
 pub fn submit_data(
     ctx: Context<SubmitData>,
@@ -28,8 +29,20 @@ pub fn submit_data(
     let halving_count = time_elapsed / HALVING_INTERVAL_SECONDS;
     let current_reward = config.initial_reward / (2_u64.pow(halving_count as u32));
 
-    // Accumulate rewards for device
-    device_rewards.accumulated_points += current_reward;
+    // Transfer tokens immediately to owner (automatic distribution)
+    token::transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            token::Transfer {
+                from: ctx.accounts.treasury.to_account_info(),
+                to: ctx.accounts.owner_token_account.to_account_info(),
+                authority: ctx.accounts.treasury_authority.to_account_info(),
+            },
+        ),
+        current_reward,
+    )?;
+
+    // Update device stats
     device_rewards.total_data_submitted += 1;
     device_rewards.last_submission = current_time;
     device_rewards.owner = device.owner; // Update owner in case of transfer
@@ -39,7 +52,7 @@ pub fn submit_data(
     config.total_rewards_distributed += current_reward;
 
     msg!(
-        "Data submitted - Device: {}, PM2.5: {:.1} μg/m³, PM10: {:.1} μg/m³, Temp: {:.1}°C, Humidity: {:.1}%, Reward: {} AIR (halving epoch: {})",
+        "Data submitted - Device: {}, PM2.5: {:.1} μg/m³, PM10: {:.1} μg/m³, Temp: {:.1}°C, Humidity: {:.1}%, Reward: {} AIR (halving epoch: {}) - AUTO-DISTRIBUTED",
         device_id,
         pm25 as f64 / 10.0,
         pm10 as f64 / 10.0,
@@ -91,6 +104,20 @@ pub struct SubmitData<'info> {
     )]
     pub reward_config: Account<'info, RewardConfig>,
 
+    /// Treasury that holds the tokens
+    #[account(mut)]
+    pub treasury: Account<'info, TokenAccount>,
+
+    /// Owner's token account to receive rewards (auto-distributed)
+    #[account(mut)]
+    pub owner_token_account: Account<'info, TokenAccount>,
+
+    /// Treasury authority that signs the transfer
+    pub treasury_authority: Signer<'info>,
+
     /// Server that submits data
     pub server: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }

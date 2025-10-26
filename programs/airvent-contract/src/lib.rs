@@ -46,12 +46,4 @@ pub mod airvent_contract {
     ) -> Result<()> {
         instructions::data::submit_data(ctx, device_id, pm25, pm10, temperature, humidity)
     }
-
-    pub fn get_device_rewards(ctx: Context<GetDeviceRewards>) -> Result<u64> {
-        instructions::reward::get_device_rewards(ctx)
-    }
-
-    pub fn claim_rewards(ctx: Context<ClaimRewards>, device_id: String) -> Result<()> {
-        instructions::reward::claim_rewards(ctx, device_id)
-    }
 }

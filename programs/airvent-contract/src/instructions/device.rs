@@ -20,7 +20,6 @@ pub fn register_device(ctx: Context<RegisterDevice>, device_id: String) -> Resul
     let device_rewards = &mut ctx.accounts.device_rewards;
     device_rewards.device_id = device_id.clone();
     device_rewards.owner = ctx.accounts.owner.key();
-    device_rewards.accumulated_points = 0;
     device_rewards.total_data_submitted = 0;
     device_rewards.last_submission = 0;
 
