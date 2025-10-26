@@ -10,8 +10,10 @@ use crate::{
 pub fn submit_data(
     ctx: Context<SubmitData>,
     device_id: String,
-    pm25: u16,
-    pm10: u16,
+    pm25: u32,        // μg/m³ × 10 (e.g., 35.2 μg/m³ = 352)
+    pm10: u32,        // μg/m³ × 10 (e.g., 50.1 μg/m³ = 501)
+    temperature: i32, // Celsius × 10 (e.g., 25.3°C = 253)
+    humidity: u32,    // Percentage × 10 (e.g., 65.5% = 655)
 ) -> Result<()> {
     let device = &ctx.accounts.device;
     let config = &mut ctx.accounts.reward_config;
@@ -37,10 +39,12 @@ pub fn submit_data(
     config.total_rewards_distributed += current_reward;
 
     msg!(
-        "Data submitted - Device: {}, PM2.5: {}, PM10: {}, Reward: {} AIR (halving epoch: {})",
+        "Data submitted - Device: {}, PM2.5: {:.1} μg/m³, PM10: {:.1} μg/m³, Temp: {:.1}°C, Humidity: {:.1}%, Reward: {} AIR (halving epoch: {})",
         device_id,
-        pm25,
-        pm10,
+        pm25 as f64 / 10.0,
+        pm10 as f64 / 10.0,
+        temperature as f64 / 10.0,
+        humidity as f64 / 10.0,
         current_reward,
         halving_count
     );
@@ -51,6 +55,8 @@ pub fn submit_data(
         timestamp: current_time,
         pm25,
         pm10,
+        temperature,
+        humidity,
         reward_amount: current_reward,
         halving_epoch: halving_count as u64,
         owner: device.owner,

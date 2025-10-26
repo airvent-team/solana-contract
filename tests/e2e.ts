@@ -129,7 +129,7 @@ describe("E2E: IoT Reward System", () => {
     // Submit 5 data points
     for (let i = 0; i < 5; i++) {
       await program.methods
-        .submitData(deviceId, 25 + i, 40 + i)
+        .submitData(deviceId, (25 + i) * 10, (40 + i) * 10, 250 + i * 3, 650 + i * 10) // Varying PM/temp/humidity
         .accounts({
           device: deviceAddress,
           deviceRewards: deviceRewardsAddress,
@@ -202,7 +202,7 @@ describe("E2E: IoT Reward System", () => {
     // Submit 3 more data points
     for (let i = 0; i < 3; i++) {
       await program.methods
-        .submitData(deviceId, 30 + i, 50 + i)
+        .submitData(deviceId, (30 + i) * 10, (50 + i) * 10, 270 + i * 2, 680 + i * 5) // Varying PM/temp/humidity
         .accounts({
           device: deviceAddress,
           deviceRewards: deviceRewardsAddress,

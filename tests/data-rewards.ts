@@ -119,7 +119,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     );
 
     const tx = await program.methods
-      .submitData(deviceId1, 35, 50) // PM2.5: 35, PM10: 50
+      .submitData(deviceId1, 350, 500, 253, 655) // PM2.5: 35.0, PM10: 50.0, Temp: 25.3°C, Humidity: 65.5%
       .accounts({
         device: device1Address,
         deviceRewards: device1RewardsAddress,
@@ -148,7 +148,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
   it("Verifies DataSubmitted event is emitted (integration)", async () => {
     // Submit data - event will be emitted automatically
     const txSignature = await program.methods
-      .submitData(deviceId1, 42, 58)
+      .submitData(deviceId1, 420, 580, 268, 702) // PM2.5: 42.0, PM10: 58.0, Temp: 26.8°C, Humidity: 70.2%
       .accounts({
         device: device1Address,
         deviceRewards: device1RewardsAddress,
@@ -171,7 +171,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
   it("Device 1 submits more data - rewards accumulate on device", async () => {
     for (let i = 0; i < 5; i++) {
       await program.methods
-        .submitData(deviceId1, 30 + i, 45 + i)
+        .submitData(deviceId1, (30 + i) * 10, (45 + i) * 10, 230 + i * 2, 600 + i * 5) // Varying PM/temp/humidity
         .accounts({
           device: device1Address,
           deviceRewards: device1RewardsAddress,
@@ -201,7 +201,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     );
 
     const tx = await program.methods
-      .submitData(deviceId2, 40, 60)
+      .submitData(deviceId2, 400, 600, 220, 580) // PM2.5: 40.0, PM10: 60.0, Temp: 22.0°C, Humidity: 58.0%
       .accounts({
         device: device2Address,
         deviceRewards: device2RewardsAddress,
@@ -243,7 +243,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     // Submit more data - rewards should update owner info
     await program.methods
-      .submitData(deviceId1, 42, 58)
+      .submitData(deviceId1, 420, 580, 245, 620) // PM2.5: 42.0, PM10: 58.0, Temp: 24.5°C, Humidity: 62.0%
       .accounts({
         device: device1Address,
         deviceRewards: device1RewardsAddress,
@@ -296,7 +296,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
 
     try {
       await program.methods
-        .submitData(unregisteredDeviceId, 50, 70)
+        .submitData(unregisteredDeviceId, 500, 700, 250, 650) // PM2.5: 50.0, PM10: 70.0, Temp: 25.0°C, Humidity: 65.0%
         .accounts({
           device: unregisteredDeviceAddress,
           deviceRewards: unregisteredRewardsAddress,
@@ -335,7 +335,7 @@ describe("Data Collection & Time-based Halving (4 years)", () => {
     // Try to submit data with inactive device
     try {
       await program.methods
-        .submitData(deviceId2, 30, 50)
+        .submitData(deviceId2, 300, 500, 235, 600) // PM2.5: 30.0, PM10: 50.0, Temp: 23.5°C, Humidity: 60.0%
         .accounts({
           device: device2Address,
           deviceRewards: device2RewardsAddress,

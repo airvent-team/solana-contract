@@ -39,10 +39,12 @@ pub mod airvent_contract {
     pub fn submit_data(
         ctx: Context<SubmitData>,
         device_id: String,
-        pm25: u16,
-        pm10: u16,
+        pm25: u32,
+        pm10: u32,
+        temperature: i32,
+        humidity: u32,
     ) -> Result<()> {
-        instructions::data::submit_data(ctx, device_id, pm25, pm10)
+        instructions::data::submit_data(ctx, device_id, pm25, pm10, temperature, humidity)
     }
 
     pub fn get_device_rewards(ctx: Context<GetDeviceRewards>) -> Result<u64> {
