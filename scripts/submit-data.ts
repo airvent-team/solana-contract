@@ -12,9 +12,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AirventContract } from "../target/types/airvent_contract";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccount } from "@solana/spl-token";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
+import { loadSolanaConfig, getNetworkName } from "./utils/config";
 
 async function main() {
   // Check arguments
@@ -32,25 +30,10 @@ async function main() {
   const temperature = parseInt(process.argv[5]);
   const humidity = parseInt(process.argv[6]);
 
-  // Initialize provider and program
-  const connection = new anchor.web3.Connection(
-    "https://api.devnet.solana.com",
-    "confirmed"
-  );
+  // Load Solana CLI configuration (uses same network/wallet as CLI)
+  const config = loadSolanaConfig();
 
-  // Load wallet from Solana CLI config
-  const configPath = path.join(os.homedir(), ".config/solana/cli/config.yml");
-  const configContent = fs.readFileSync(configPath, 'utf-8');
-  const keypairMatch = configContent.match(/keypair_path: (.+)/);
-  const walletPath = keypairMatch ? keypairMatch[1].trim() : path.join(os.homedir(), ".config/solana/id.json");
-
-  const walletKeypair = anchor.web3.Keypair.fromSecretKey(
-    new Uint8Array(JSON.parse(fs.readFileSync(walletPath, "utf-8")))
-  );
-  const wallet = new anchor.Wallet(walletKeypair);
-  const server = walletKeypair.publicKey; // Server = current wallet
-
-  const provider = new anchor.AnchorProvider(connection, wallet, {
+  const provider = new anchor.AnchorProvider(config.connection, config.wallet, {
     commitment: "confirmed",
   });
   anchor.setProvider(provider);
@@ -113,13 +96,13 @@ async function main() {
   const ownerTokenAccount = await getAssociatedTokenAddress(mint, device.owner);
 
   // Check if owner token account exists, if not create it
-  const ownerTokenAccountInfo = await connection.getAccountInfo(ownerTokenAccount);
+  const ownerTokenAccountInfo = await config.connection.getAccountInfo(ownerTokenAccount);
 
   if (!ownerTokenAccountInfo) {
     console.log("🔧 Creating owner token account...");
     await createAssociatedTokenAccount(
-      connection,
-      walletKeypair,
+      config.connection,
+      config.wallet.payer,
       mint,
       device.owner
     );
@@ -146,7 +129,7 @@ async function main() {
 
     // Fetch updated stats
     const deviceRewards = await program.account.deviceRewards.fetch(deviceRewardsPda);
-    const ownerBalance = await connection.getTokenAccountBalance(ownerTokenAccount);
+    const ownerBalance = await config.connection.getTokenAccountBalance(ownerTokenAccount);
 
     console.log("📊 Updated Stats:");
     console.log(`   Total Submissions: ${deviceRewards.totalDataSubmitted.toString()}`);

@@ -13,30 +13,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AirventContract } from "../target/types/airvent_contract";
-import * as fs from "fs";
-import * as os from "os";
+import { loadSolanaConfig, getNetworkName } from "./utils/config";
 
 const MAX_DEVICE_ID_LEN = 32;
 
 async function main() {
-  // Initialize provider and program
-  const connection = new anchor.web3.Connection(
-    "https://api.devnet.solana.com",
-    "confirmed"
-  );
+  // Load Solana CLI configuration (uses same network/wallet as CLI)
+  const config = loadSolanaConfig();
 
-  // Load wallet from Solana CLI config
-  const configPath = `${os.homedir()}/.config/solana/cli/config.yml`;
-  const configContent = fs.readFileSync(configPath, 'utf-8');
-  const keypairMatch = configContent.match(/keypair_path: (.+)/);
-  const walletPath = keypairMatch ? keypairMatch[1].trim() : `${os.homedir()}/.config/solana/id.json`;
-
-  const walletKeypair = anchor.web3.Keypair.fromSecretKey(
-    new Uint8Array(JSON.parse(fs.readFileSync(walletPath, "utf-8")))
-  );
-  const wallet = new anchor.Wallet(walletKeypair);
-
-  const provider = new anchor.AnchorProvider(connection, wallet, {
+  const provider = new anchor.AnchorProvider(config.connection, config.wallet, {
     commitment: "confirmed",
   });
   anchor.setProvider(provider);
@@ -89,7 +74,7 @@ async function main() {
 
   console.log("📋 Configuration:");
   console.log(`   Program ID:  ${program.programId.toString()}`);
-  console.log(`   Network:     ${provider.connection.rpcEndpoint}`);
+  console.log(`   Network:     ${getNetworkName(config.rpcUrl)} (${config.rpcUrl})`);
   console.log(`   Owner:       ${owner.toString()}`);
   console.log(`   Device ID:   "${deviceId}"`);
   console.log(`   Device PDA:  ${devicePda.toString()}`);

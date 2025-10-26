@@ -11,8 +11,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AirventContract } from "../target/types/airvent_contract";
-import * as fs from "fs";
-import * as os from "os";
+import { loadSolanaConfig, getNetworkName } from "./utils/config";
 
 async function main() {
   // Check arguments
@@ -35,26 +34,12 @@ async function main() {
     process.exit(1);
   }
 
-  // Initialize provider and program
-  const connection = new anchor.web3.Connection(
-    "https://api.devnet.solana.com",
-    "confirmed"
-  );
+  // Load Solana CLI configuration (uses same network/wallet as CLI)
+  const config = loadSolanaConfig();
 
-  // Load wallet from Solana CLI config
-  const configPath = `${os.homedir()}/.config/solana/cli/config.yml`;
-  const configContent = fs.readFileSync(configPath, 'utf-8');
-  const keypairMatch = configContent.match(/keypair_path: (.+)/);
-  const walletPath = keypairMatch ? keypairMatch[1].trim() : `${os.homedir()}/.config/solana/id.json`;
+  console.log(`\n🔍 Debug - Wallet pubkey from keypair: ${config.wallet.publicKey.toString()}`);
 
-  const walletKeypair = anchor.web3.Keypair.fromSecretKey(
-    new Uint8Array(JSON.parse(fs.readFileSync(walletPath, "utf-8")))
-  );
-  const wallet = new anchor.Wallet(walletKeypair);
-
-  console.log(`\n🔍 Debug - Wallet pubkey from keypair: ${walletKeypair.publicKey.toString()}`);
-
-  const provider = new anchor.AnchorProvider(connection, wallet, {
+  const provider = new anchor.AnchorProvider(config.connection, config.wallet, {
     commitment: "confirmed",
   });
   anchor.setProvider(provider);
