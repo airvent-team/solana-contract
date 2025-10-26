@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("7HjcqvBdLaj6JzH5x3shJcSjaig4SXqwMJGQCbDLyVVB");
+declare_id!("B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR");
 
 #[program]
 pub mod airvent_contract {

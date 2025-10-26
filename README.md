@@ -11,6 +11,43 @@ A Solana smart contract that **automatically distributes AIR token rewards** whe
 - **Multi-Sensor Data**: Collects PM2.5, PM10, temperature, and humidity data
 - **Event Logging**: IoT data permanently stored on-chain (queryable via Helius/Triton indexers)
 
+## Deployed Contract Information
+
+### Devnet Deployment
+
+#### 🔑 Fixed Addresses (Immutable)
+These addresses remain constant for the lifetime of the program:
+
+```
+Program ID:      B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR
+Treasury PDA:    B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u
+RewardConfig:    CFkj9K4gmtAnSBAETivan76gnuhv5oohytCKd7PqPvSy
+```
+
+#### 🪙 Token Information
+
+```
+Mint Address:    BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL
+Total Supply:    1,000,000,000 AIR
+Decimals:        9
+Initial Reward:  0.1 AIR per submission
+Halving Period:  Every 4 years
+Network:         Devnet
+```
+
+#### 📊 Contract Status
+
+- ✅ Treasury PDA holds all 1B AIR tokens
+- ✅ Mint authority permanently revoked (no additional minting possible)
+- ✅ Rewards automatically distributed on data submission
+- ✅ Treasury controlled by program (PDA signer)
+
+#### 🔗 Explorer Links
+
+- [Program on Solscan](https://solscan.io/account/B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR?cluster=devnet)
+- [Token Mint on Solscan](https://solscan.io/token/BXV4ewBjMB1qmXjU3bc14SfXHQbseFhRy5xE4RtHtvsL?cluster=devnet)
+- [Treasury PDA on Solscan](https://solscan.io/account/B4YbNirNnbayYmhxbhEpFvHPBFukVLCnxHHxmaeuu3u?cluster=devnet)
+
 ## Architecture
 
 ### Module Structure
@@ -55,6 +92,30 @@ anchor build
 anchor deploy
 anchor migrate
 ```
+
+### Using Deployed Scripts
+
+All scripts automatically detect and use your Solana CLI configuration:
+
+```bash
+# Set network (scripts will auto-detect this)
+solana config set --url devnet
+
+# Register a device
+yarn ts-node scripts/register-device.ts my-device-001
+
+# Submit sensor data (auto-distributes rewards)
+yarn ts-node scripts/submit-data.ts my-device-001 352 501 253 655
+# PM2.5: 35.2 μg/m³, PM10: 50.1 μg/m³, Temp: 25.3°C, Humidity: 65.5%
+
+# Transfer device ownership
+yarn ts-node scripts/transfer-ownership.ts my-device-001 <new_owner_pubkey>
+```
+
+**Network Auto-Detection:**
+- Scripts automatically read `~/.config/solana/cli/config.yml`
+- No need to specify `--url` - just use `solana config set --url <network>`
+- Supports: localnet, devnet, testnet, mainnet-beta
 
 **Detailed Guides:**
 - **[DEPLOYMENT.md](./docs/DEPLOYMENT.md)** - Network switching, Anchor commands, full deployment process, troubleshooting
@@ -107,8 +168,11 @@ Halving timing is calculated based on `reward_config.start_timestamp`.
 
 - Rewards **automatically transferred instantly** upon data submission
 - No separate claim transaction required
-- Instantly transferred from Treasury → Owner Token Account
+- Instantly transferred from **Treasury PDA** → Owner Token Account
+- Treasury is a Program Derived Address (PDA) - fully controlled by the smart contract
+- No manual signatures required for distribution
 - Optimized user experience and gas savings
+- Only 6 accounts needed for data submission (simplified from 9)
 
 ## Testing
 
@@ -145,7 +209,9 @@ All tests guarantee idempotency and independence (order-independent execution).
 
 ### Token Security
 - Mint Authority is permanently removed upon initialization (no additional minting possible)
-- Treasury Authority should use secure wallet/Multisig
+- **Treasury PDA**: All tokens stored in program-controlled PDA (seeds: `[b"treasury"]`)
+- Treasury is fully controlled by the smart contract - no external signatures needed
+- Authority account for admin functions should use secure wallet/Multisig
 
 ### Device Management Security
 - **Registration Verification**: DeviceRewards only created in register_device (removed init_if_needed)

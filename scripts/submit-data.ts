@@ -39,7 +39,7 @@ async function main() {
   anchor.setProvider(provider);
 
   const programId = new anchor.web3.PublicKey(
-    "7HjcqvBdLaj6JzH5x3shJcSjaig4SXqwMJGQCbDLyVVB"
+    "B4m1ENS6SWV3H6mZkJ2VFkBKawqYe7atH4AjXoc4NZzR"
   );
   const idl = require("../target/idl/airvent_contract.json");
   const program = new Program(idl, provider) as Program<AirventContract>;
