@@ -1,44 +1,44 @@
-# AIR Token 배포 가이드
+# AIR Token Deployment Guide
 
 ---
 
-## 빠른 참조
+## Quick Reference
 
-### 명령어 요약
+### Command Summary
 
-| 작업 | 명령어 |
+| Task | Command |
 |------|--------|
-| 빌드 | `anchor build` |
-| 배포 (로컬넷) | `anchor deploy` |
-| 배포 (Devnet) | `anchor deploy --provider.cluster devnet` |
-| 배포 (Mainnet) | `anchor deploy --provider.cluster mainnet-beta` |
-| 초기화 | `anchor migrate` |
-| 테스트 | `anchor test` |
+| Build | `anchor build` |
+| Deploy (Localnet) | `anchor deploy` |
+| Deploy (Devnet) | `anchor deploy --provider.cluster devnet` |
+| Deploy (Mainnet) | `anchor deploy --provider.cluster mainnet-beta` |
+| Initialize | `anchor migrate` |
+| Test | `anchor test` |
 
 
 ---
 
-## 로컬넷 배포
+## Localnet Deployment
 
-### Step 1: 로컬 Validator 시작
+### Step 1: Start Local Validator
 
 ```bash
 anchor localnet
 ```
 
-### Step 2: 빌드 및 배포
+### Step 2: Build and Deploy
 
 ```bash
 anchor build
 anchor deploy
 ```
 
-출력된 Program ID를 확인:
+Check the output Program ID:
 ```
 Program Id: 7HjcqvBdLaj6JzH5x3shJcSjaig4SXqwMJGQCbDLyVVB
 ```
 
-### Step 3: Program ID 업데이트
+### Step 3: Update Program ID
 
 `programs/airvent-contract/src/lib.rs`:
 ```rust
@@ -51,20 +51,20 @@ declare_id!("7HjcqvBdLaj6JzH5x3shJcSjaig4SXqwMJGQCbDLyVVB");
 airvent_contract = "7HjcqvBdLaj6JzH5x3shJcSjaig4SXqwMJGQCbDLyVVB"
 ```
 
-### Step 4: 재빌드 및 초기화
+### Step 4: Rebuild and Initialize
 
 ```bash
 anchor build
 anchor migrate
 ```
 
-**초기화 내용:**
-- AIR Token 생성 (1B 공급량)
-- Mint Authority 제거
-- Reward Config 설정
-- Mint keypair 저장 (`.keys/mint-keypair.json`)
+**Initialization includes:**
+- Create AIR Token (1B supply)
+- Remove Mint Authority
+- Configure Reward Config
+- Save Mint keypair (`.keys/mint-keypair.json`)
 
-### Step 5: 테스트
+### Step 5: Test
 
 ```bash
 anchor test
@@ -72,33 +72,33 @@ anchor test
 
 ---
 
-## Devnet 배포
+## Devnet Deployment
 
 ### Step 1: SOL Airdrop
 
 ```bash
 solana config set --url devnet
 solana airdrop 2
-solana balance  # 최소 2 SOL 권장
+solana balance  # Minimum 2 SOL recommended
 ```
 
-### Step 2: 빌드 및 배포
+### Step 2: Build and Deploy
 
 ```bash
 anchor build
 anchor deploy --provider.cluster devnet
 ```
 
-### Step 3: Program ID 업데이트 및 초기화
+### Step 3: Update Program ID and Initialize
 
-출력된 Program ID로 `lib.rs`와 `Anchor.toml` 업데이트 후:
+Update `lib.rs` and `Anchor.toml` with the output Program ID, then:
 
 ```bash
 anchor build
 anchor migrate --provider.cluster devnet
 ```
 
-### Step 4: Explorer 확인
+### Step 4: Verify on Explorer
 
 ```
 https://explorer.solana.com/address/<PROGRAM_ID>?cluster=devnet
@@ -106,18 +106,18 @@ https://explorer.solana.com/address/<PROGRAM_ID>?cluster=devnet
 
 ---
 
-## Mainnet 배포
+## Mainnet Deployment
 
-⚠️ **주의:** 실제 SOL 비용 발생, 되돌릴 수 없음
+⚠️ **Warning:** Real SOL costs incurred, irreversible
 
-### 사전 체크리스트
+### Pre-deployment Checklist
 
-- [ ] 모든 테스트 통과
-- [ ] 코드 감사 완료
-- [ ] 충분한 SOL 보유 (10+ SOL 권장)
-- [ ] Multisig 지갑 준비
+- [ ] All tests passing
+- [ ] Code audit completed
+- [ ] Sufficient SOL balance (10+ SOL recommended)
+- [ ] Multisig wallet prepared
 
-### Step 1: Mainnet 지갑 준비
+### Step 1: Prepare Mainnet Wallet
 
 ```bash
 solana-keygen new --outfile ~/.config/solana/mainnet-wallet.json
@@ -126,38 +126,38 @@ solana config set --keypair ~/.config/solana/mainnet-wallet.json
 solana balance
 ```
 
-### Step 2: 빌드 및 배포
+### Step 2: Build and Deploy
 
 ```bash
 anchor build --verifiable
 anchor deploy --provider.cluster mainnet-beta
 ```
 
-### Step 3: Program ID 업데이트 및 초기화
+### Step 3: Update Program ID and Initialize
 
 ```bash
-# lib.rs와 Anchor.toml 업데이트 후
+# After updating lib.rs and Anchor.toml
 anchor build --verifiable
 anchor migrate --provider.cluster mainnet-beta
 ```
 
-### Step 4: 배포 검증
+### Step 4: Verify Deployment
 
 ```bash
 solana program show <PROGRAM_ID>
 
-# Mint 확인
+# Verify mint supply
 spl-token supply <MINT_ADDRESS>  # Expected: 1000000000
 
-# Mint Authority 제거 확인
+# Verify Mint Authority removed
 spl-token display <MINT_ADDRESS> | grep "Mint authority"  # Expected: (not set)
 ```
 
 ---
 
-## 네트워크 전환
+## Network Switching
 
-### Anchor.toml 수정 (권장)
+### Modify Anchor.toml (Recommended)
 
 ```toml
 [provider]
@@ -165,16 +165,16 @@ cluster = "devnet"  # localnet, devnet, mainnet-beta
 wallet = "~/.config/solana/id.json"
 ```
 
-### CLI 옵션 사용
+### Use CLI Options
 
 ```bash
 anchor deploy --provider.cluster devnet
 anchor migrate --provider.cluster devnet
 ```
 
-### 네트워크별 RPC
+### Network RPC URLs
 
-| 네트워크 | RPC URL |
+| Network | RPC URL |
 |---------|---------|
 | localnet | http://localhost:8899 |
 | devnet | https://api.devnet.solana.com |
@@ -182,35 +182,35 @@ anchor migrate --provider.cluster devnet
 
 ---
 
-## Anchor 명령어
+## Anchor Commands
 
 ### anchor build
 
 ```bash
-anchor build              # 일반 빌드
-anchor build --verifiable # 검증 가능한 빌드 (Mainnet)
+anchor build              # Normal build
+anchor build --verifiable # Verifiable build (Mainnet)
 ```
 
 ### anchor deploy
 
 ```bash
-anchor deploy                                    # Anchor.toml cluster 사용
+anchor deploy                                    # Use Anchor.toml cluster
 anchor deploy --provider.cluster devnet          # Devnet
 anchor deploy --provider.cluster mainnet-beta    # Mainnet
 ```
 
 ### anchor migrate
 
-⚠️ **중요:** `anchor migrate`는 배포하지 않습니다. `migrations/deploy.ts` 스크립트만 실행합니다.
+⚠️ **Important:** `anchor migrate` does not deploy. It only runs the `migrations/deploy.ts` script.
 
 ```bash
-anchor migrate                                   # 초기화
-anchor migrate --provider.cluster devnet         # Devnet 초기화
+anchor migrate                                   # Initialize
+anchor migrate --provider.cluster devnet         # Devnet initialization
 ```
 
-**수행 작업:**
-- AIR Token 초기화 (1B 공급량, Mint Authority 제거)
-- Reward Config 초기화 (100 AIR/data, 4년 반감기)
+**Actions performed:**
+- Initialize AIR Token (1B supply, remove Mint Authority)
+- Initialize Reward Config (100 AIR/data, 4-year halving)
 
 ### anchor upgrade
 
@@ -221,105 +221,105 @@ anchor upgrade target/deploy/airvent_contract.so --provider.cluster devnet
 ### anchor test
 
 ```bash
-anchor test                         # 전체 테스트
-anchor test -- --grep "Device"      # 특정 테스트
+anchor test                         # Run all tests
+anchor test -- --grep "Device"      # Run specific tests
 ```
 
 ---
 
-## Program ID 관리
+## Program ID Management
 
-### Keypair 백업
+### Keypair Backup
 
 ```bash
-# Mainnet keypair 백업 (필수!)
+# Backup Mainnet keypair (Required!)
 cp target/deploy/airvent_contract-keypair.json \
    backup/airvent_contract-mainnet-$(date +%Y%m%d).json
 ```
 
-### Program ID 변경 시점
+### When to Change Program ID
 
-1. 로컬넷 재시작 후 첫 배포
-2. 새 네트워크 첫 배포 (Devnet → Mainnet)
-3. Keypair 삭제 후 배포
+1. First deployment after localnet restart
+2. First deployment to new network (Devnet → Mainnet)
+3. Deployment after keypair deletion
 
-### 변경 절차
+### Change Procedure
 
-1. 배포 후 Program ID 확인
-2. `lib.rs` → `declare_id!()` 업데이트
-3. `Anchor.toml` → `[programs.<cluster>]` 업데이트
-4. 재빌드
+1. Check Program ID after deployment
+2. Update `lib.rs` → `declare_id!()`
+3. Update `Anchor.toml` → `[programs.<cluster>]`
+4. Rebuild
 
 ---
 
-## 트러블슈팅
+## Troubleshooting
 
-### Program ID 불일치
+### Program ID Mismatch
 
-**에러:**
+**Error:**
 ```
 Error Code: DeclaredProgramIdMismatch
 ```
 
-**해결:**
+**Solution:**
 ```bash
 solana address -k target/deploy/airvent_contract-keypair.json
-# lib.rs의 declare_id!() 업데이트
+# Update declare_id!() in lib.rs
 anchor build
 ```
 
-### Authority 에러
+### Authority Error
 
-**에러:**
+**Error:**
 ```
 Program's authority does not match
 ```
 
-**해결 (로컬넷):**
+**Solution (Localnet):**
 ```bash
 rm -f target/deploy/airvent_contract-keypair.json
 anchor build
 anchor deploy
 ```
 
-**해결 (Devnet/Mainnet):**
+**Solution (Devnet/Mainnet):**
 ```bash
-solana program show <PROGRAM_ID>  # Authority 확인
-solana config set --keypair <올바른_지갑>
+solana program show <PROGRAM_ID>  # Check authority
+solana config set --keypair <correct_wallet>
 ```
 
-### 잔액 부족
+### Insufficient Balance
 
 ```bash
-# 로컬넷/Devnet
+# Localnet/Devnet
 solana airdrop 10
 
 # Mainnet
-# 거래소에서 SOL 전송
+# Transfer SOL from exchange
 ```
 
-### RPC 연결 실패
+### RPC Connection Failed
 
 ```bash
 solana config get
 solana config set --url https://api.devnet.solana.com
 ```
 
-### Migration 에러
+### Migration Error
 
 ```bash
-# IDL 없음
+# No IDL
 anchor build
 
-# 지갑 없음
+# No wallet
 solana-keygen new --outfile ~/.config/solana/id.json
 ```
 
 ---
 
-## 사전 준비
+## Prerequisites
 
-### 도구 설치
+### Install Tools
 
 ```bash
 # Solana CLI
@@ -328,12 +328,12 @@ sh -c "$(curl -sSfL https://release.solana.com/stable/install)"
 # Anchor CLI
 cargo install --git https://github.com/coral-xyz/anchor anchor-cli --locked
 
-# 버전 확인
+# Check versions
 solana --version  # v1.18+
 anchor --version  # 0.32.1
 ```
 
-### 지갑 생성
+### Create Wallet
 
 ```bash
 solana-keygen new --outfile ~/.config/solana/id.json
@@ -342,7 +342,7 @@ solana address
 
 ---
 
-## 참고 자료
+## References
 
 - [Solana Documentation](https://docs.solana.com/)
 - [Anchor Documentation](https://www.anchor-lang.com/)
