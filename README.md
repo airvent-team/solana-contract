@@ -1,6 +1,15 @@
-# AIR Token - IoT Reward System
+# Airvent Contract - IoT Reward System
 
 A Solana smart contract that **automatically distributes AIR token rewards** when collecting air quality data from IoT devices.
+
+## Related Projects
+
+This contract is part of the Airvent ecosystem. Check out the other components:
+
+- **[SolanaDataLibrary](https://github.com/airvent-team/SolanaDataLibrary)** - .NET library for IoT device data management using the Solana blockchain. Provides functionality to securely store sensor data on-chain and manage device registration.
+
+- **[SolanaDeviceRegistrationWPF](https://github.com/airvent-team/SolanaDeviceRegistrationWPF)** - Desktop application for IoT device management. Collects real-time data from air quality sensors (PM2008) and records it on Solana DevNet, enabling transparent and tamper-proof data management.
+
 
 ## Key Features
 
